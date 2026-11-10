@@ -1,4 +1,15 @@
 spring:
+  rabbitmq:
+    connection-timeout: 5s
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 1
+        default-requeue-rejected: false
+    template:
+      mandatory: true
   application:
     name: incident-service
   datasource:

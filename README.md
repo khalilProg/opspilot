@@ -1,18 +1,18 @@
 # OpsPilot
 
-OpsPilot is a portfolio-focused, polyglot incident-management platform. Milestone 2 adds the Monitor CRUD API and automated health checks to the three-service foundation.
+OpsPilot is a portfolio-focused, polyglot incident-management platform. Milestone 2 adds Monitor CRUD, automated health checks, and a RabbitMQ event pipeline to the three-service foundation.
 
 ## Architecture
 
 | Service | Language | Local URL | Responsibility |
 |---|---|---|---|
 | monitor-service | Java / Spring Boot | http://localhost:8081 | Monitor CRUD API |
-| incident-service | Java / Spring Boot | http://localhost:8082 | Incident lifecycle (future) |
-| notification-service | Go | http://localhost:8083 | Notifications (future) |
+| incident-service | Java / Spring Boot | http://localhost:8082 | Opens and resolves incidents from monitor events |
+| notification-service | Go | http://localhost:8083 | Records incident notifications |
 | PostgreSQL | database | internal only | Separate `monitor_db` and `incident_db` databases |
-| RabbitMQ | messaging | internal only | Event broker for later phases |
+| RabbitMQ | messaging | internal only | Topic exchange for monitor and incident events |
 
-The Monitor service runs Flyway migrations against `monitor_db` at startup. Incident lifecycle and RabbitMQ event delivery are planned for later phases.
+The Java services run Flyway migrations against their respective databases at startup.
 
 ## Prerequisites
 
@@ -110,6 +110,33 @@ python3 scripts/test-monitor-checks.py
 The script reads check history through `docker compose exec`. If you start Compose with `sudo`, run `python3 scripts/test-monitor-checks.py --sudo-docker` so the database checks use the same Docker access.
 
 To return the Monitor service to the default policy after testing, run `docker compose up -d --wait monitor-service`.
+
+## RabbitMQ event pipeline
+
+The durable `opspilot.events` topic exchange routes events to two independent consumer queues.
+
+| Publisher | Routing keys | Queue | Consumer |
+|---|---|---|---|
+| Monitor | `monitor.down`, `monitor.recovered` | `incident.monitor-events` (`monitor.*`) | Incident |
+| Incident | `incident.opened`, `incident.resolved` | `notification.incident-events` (`incident.*`) | Notification |
+
+Messages carry JSON with `eventId`, `type`, `version`, `monitorId`, and `occurredAt`. Incident events also carry `incidentId`. The AMQP message ID matches the stable event ID. Monitor emits recovery only for `DOWN → UP`.
+
+Each Java publisher stores an event in its PostgreSQL outbox in the same transaction as the state change. The relay marks the row published after a broker confirm and successful routing. An unavailable broker leaves the event pending for a later polling cycle. Delivery is at least once, so a lost confirm can result in a replay with the same ID.
+
+Consumers acknowledge after committing their side effects. Incident deduplicates in PostgreSQL, and Notification writes one JSON file per event ID to the `notification_data` volume. Malformed events go to the corresponding `.dlq` queue. Processing failures are requeued with a quorum queue delivery limit of five.
+
+Rebuild all three services with the local monitoring fixture, then run the event pipeline test from the project root.
+
+```bash
+docker compose -f compose.yml -f compose.monitor-dev.yml up -d --build --wait \
+  monitor-service incident-service notification-service monitor-fixture
+python3 scripts/test-event-pipeline.py
+```
+
+If you start Compose with `sudo`, use `python3 scripts/test-event-pipeline.py --sudo-docker`. The test deletes its monitor and leaves its incident, published events, and notification records available for inspection.
+
+To verify failure and replay behavior, run `python3 scripts/test-event-reliability.py --sudo-docker` on the same development stack. This test briefly stops RabbitMQ, replays its own events, and leaves two synthetic messages in the Incident dead-letter queue for inspection. It temporarily adds a database check constraint scoped to one test event ID and removes it after the retry test.
 
 ## Design notes
 

@@ -28,10 +28,25 @@ func main() {
 	if *check {
 		client := http.Client{Timeout: 3 * time.Second}
 		resp, err := client.Get("http://127.0.0.1:8080/health")
-		if err != nil { log.Print(err); os.Exit(1) }
+		if err != nil {
+			log.Print(err)
+			os.Exit(1)
+		}
 		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK { os.Exit(1) }
+		if resp.StatusCode != http.StatusOK {
+			os.Exit(1)
+		}
 		return
+	}
+	if host := os.Getenv("RABBITMQ_HOST"); host != "" {
+		dir := os.Getenv("NOTIFICATION_DATA_DIR")
+		if dir == "" {
+			dir = "data"
+		}
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			log.Fatal(err)
+		}
+		go runIncidentConsumer(host, dir)
 	}
 	server := &http.Server{Addr: ":8080", Handler: router(), ReadHeaderTimeout: 5 * time.Second}
 	log.Println("notification-service listening on :8080")

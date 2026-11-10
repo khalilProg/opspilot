@@ -1,4 +1,14 @@
 spring:
+  rabbitmq:
+    connection-timeout: 5s
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+  task:
+    scheduling:
+      pool:
+        size: 2
   application:
     name: monitor-service
   datasource:

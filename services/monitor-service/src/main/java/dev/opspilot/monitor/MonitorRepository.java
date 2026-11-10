@@ -8,6 +8,7 @@ import java.util.UUID;
 import org.springframework.jdbc.core.DataClassRowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 class MonitorRepository {
@@ -86,8 +87,9 @@ class MonitorRepository {
                 .list();
     }
 
-    boolean saveCheck(DueMonitor monitor, MonitorHttpCheck.Result result, String status, int failures, int successes) {
-        return jdbc.sql("""
+    @Transactional
+    public boolean saveCheck(DueMonitor monitor, MonitorHttpCheck.Result result, String status, int failures, int successes) {
+        boolean saved = jdbc.sql("""
                 WITH checked AS (
                     UPDATE monitors SET status = :status, consecutive_failures = :failures,
                         consecutive_successes = :successes, last_checked_at = :checkedAt,
@@ -108,6 +110,28 @@ class MonitorRepository {
                 .param("httpStatus", result.httpStatus(), Types.INTEGER)
                 .param("error", result.error(), Types.VARCHAR)
                 .update() == 1;
+        if (saved && !status.equals(monitor.status())) {
+            if (status.equals("DOWN")) {
+                enqueue(monitor, result, "monitor.down");
+            } else if (monitor.status().equals("DOWN")) {
+                enqueue(monitor, result, "monitor.recovered");
+            }
+        }
+        return saved;
+    }
+
+    private void enqueue(DueMonitor monitor, MonitorHttpCheck.Result result, String routingKey) {
+        jdbc.sql("""
+                INSERT INTO event_outbox (event_id, routing_key, payload)
+                VALUES (:id, :type, jsonb_build_object(
+                    'eventId', CAST(:id AS uuid), 'type', CAST(:type AS text), 'version', 1,
+                    'monitorId', CAST(:monitorId AS uuid), 'occurredAt', CAST(:occurredAt AS timestamptz)))
+                """)
+                .param("id", UUID.randomUUID())
+                .param("type", routingKey)
+                .param("monitorId", monitor.id())
+                .param("occurredAt", result.checkedAt())
+                .update();
     }
 
     record DueMonitor(UUID id, String url, int timeoutSeconds, String status, int consecutiveFailures,

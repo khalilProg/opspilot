@@ -35,6 +35,9 @@ services:
     build: ./services/monitor-service
     restart: unless-stopped
     environment:
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER:?Missing broker user}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Missing broker password}
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/monitor_db
       SPRING_DATASOURCE_USERNAME: monitor_user
       SPRING_DATASOURCE_PASSWORD: ${MONITOR_DB_PASSWORD:?Missing monitor password}
@@ -53,6 +56,9 @@ services:
     build: ./services/incident-service
     restart: unless-stopped
     environment:
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER:?Missing broker user}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Missing broker password}
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/incident_db
       SPRING_DATASOURCE_USERNAME: incident_user
       SPRING_DATASOURCE_PASSWORD: ${INCIDENT_DB_PASSWORD:?Missing incident password}
@@ -70,6 +76,13 @@ services:
   notification-service:
     build: ./services/notification-service
     restart: unless-stopped
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER:?Missing broker user}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?Missing broker password}
+      NOTIFICATION_DATA_DIR: /app/data
+    volumes:
+      - notification_data:/app/data
     ports: ["127.0.0.1:8083:8080"]
     depends_on:
       rabbitmq: {condition: service_healthy}
@@ -100,5 +113,6 @@ services:
 volumes:
   postgres_data:
   rabbitmq_data:
+  notification_data:
 networks:
   backend:

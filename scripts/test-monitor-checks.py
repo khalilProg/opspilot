@@ -20,18 +20,18 @@ def config(url):
             "intervalSeconds": 1, "timeoutSeconds": 2, "enabled": True}
 
 
-def query_database(compose, sql):
+def query_database(compose, sql, database="monitor_db"):
     try:
         result = subprocess.run(compose + [
             "exec", "-T", "postgres", "psql", "-XAt", "-v", "ON_ERROR_STOP=1",
-            "-U", "postgres", "-d", "monitor_db", "-c", sql,
+            "-U", "postgres", "-d", database, "-c", sql,
         ], text=True, capture_output=True, check=True)
     except subprocess.CalledProcessError as error:
         detail = error.stderr.strip() or f"exit status {error.returncode}"
         hint = ""
         if compose[0] == "docker" and "permission denied" in detail.lower():
             hint = "\nIf you start Compose with sudo, rerun with --sudo-docker."
-        raise SystemExit(f"Cannot query Monitor check history through Compose: {detail}{hint}") from None
+        raise SystemExit(f"Cannot query {database} through Compose: {detail}{hint}") from None
     except FileNotFoundError as error:
         raise SystemExit(f"Required command unavailable: {error.filename}") from None
     return result.stdout
