@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: monitor-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/monitor_db}
+    username: ${SPRING_DATASOURCE_USERNAME:monitor_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+server:
+  port: 8080
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never

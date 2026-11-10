@@ -1,0 +1,104 @@
+name: opspilot
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?Copy .env.example to .env first}
+      MONITOR_DB_PASSWORD: ${MONITOR_DB_PASSWORD:?Missing monitor password}
+      INCIDENT_DB_PASSWORD: ${INCIDENT_DB_PASSWORD:?Missing incident password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    networks: [backend]
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Missing broker user}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Missing broker password}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [backend]
+  monitor-service:
+    build: ./services/monitor-service
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/monitor_db
+      SPRING_DATASOURCE_USERNAME: monitor_user
+      SPRING_DATASOURCE_PASSWORD: ${MONITOR_DB_PASSWORD:?Missing monitor password}
+    ports: ["127.0.0.1:8081:8080"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 40s
+      retries: 5
+    networks: [backend]
+  incident-service:
+    build: ./services/incident-service
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/incident_db
+      SPRING_DATASOURCE_USERNAME: incident_user
+      SPRING_DATASOURCE_PASSWORD: ${INCIDENT_DB_PASSWORD:?Missing incident password}
+    ports: ["127.0.0.1:8082:8080"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 40s
+      retries: 5
+    networks: [backend]
+  notification-service:
+    build: ./services/notification-service
+    restart: unless-stopped
+    ports: ["127.0.0.1:8083:8080"]
+    depends_on:
+      rabbitmq: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "/app/notification-service", "-healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks: [backend]
+  monitor-service-test:
+    profiles: [test]
+    image: maven:3.9-eclipse-temurin-21
+    working_dir: /src
+    volumes: ["./services/monitor-service:/src"]
+    command: ["mvn", "-B", "test"]
+  incident-service-test:
+    profiles: [test]
+    image: maven:3.9-eclipse-temurin-21
+    working_dir: /src
+    volumes: ["./services/incident-service:/src"]
+    command: ["mvn", "-B", "test"]
+  notification-service-test:
+    profiles: [test]
+    image: golang:1.24-alpine
+    working_dir: /src
+    volumes: ["./services/notification-service:/src"]
+    command: ["go", "test", "./..."]
+volumes:
+  postgres_data:
+  rabbitmq_data:
+networks:
+  backend:
