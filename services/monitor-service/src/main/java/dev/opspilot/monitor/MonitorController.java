@@ -1,11 +1,9 @@
 package dev.opspilot.monitor;
 
-import java.net.URI;
 import java.util.List;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -31,12 +29,16 @@ import org.springframework.web.util.UriComponentsBuilder;
 class MonitorController {
     private final MonitorRepository monitors;
 
-    MonitorController(MonitorRepository monitors) {
+    private final MonitorTargetPolicy targets;
+
+    MonitorController(MonitorRepository monitors, MonitorTargetPolicy targets) {
         this.monitors = monitors;
+        this.targets = targets;
     }
 
     @PostMapping
     ResponseEntity<Monitor> create(@Valid @RequestBody Configuration config, UriComponentsBuilder uri) {
+        validateTarget(config.url());
         Monitor monitor = monitors.create(config.name(), config.url(), config.intervalSeconds(),
                 config.timeoutSeconds(), config.enabled());
         return ResponseEntity.created(uri.path("/api/monitors/{id}").buildAndExpand(monitor.id()).toUri())
@@ -55,6 +57,7 @@ class MonitorController {
 
     @PutMapping("/{id}")
     Monitor update(@PathVariable UUID id, @Valid @RequestBody Configuration config) {
+        validateTarget(config.url());
         return monitors.update(id, config.name(), config.url(), config.intervalSeconds(), config.timeoutSeconds(),
                 config.enabled()).orElseThrow(MonitorController::notFound);
     }
@@ -72,6 +75,14 @@ class MonitorController {
         return monitors.updateEnabled(id, update.enabled()).orElseThrow(MonitorController::notFound);
     }
 
+    private void validateTarget(String url) {
+        try {
+            targets.resolve(url);
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
+        }
+    }
+
     private static ResponseStatusException notFound() {
         return new ResponseStatusException(HttpStatus.NOT_FOUND, "Monitor not found");
     }
@@ -82,20 +93,6 @@ class MonitorController {
             @NotNull @Positive Integer intervalSeconds,
             @NotNull @Positive Integer timeoutSeconds,
             @NotNull Boolean enabled) {
-
-        @AssertTrue(message = "url must be an absolute HTTP or HTTPS URL")
-        public boolean isHttpUrl() {
-            if (url == null) {
-                return true;
-            }
-            try {
-                URI uri = URI.create(url);
-                return uri.getHost() != null
-                        && ("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()));
-            } catch (IllegalArgumentException ex) {
-                return false;
-            }
-        }
     }
 
     record EnabledUpdate(@NotNull Boolean enabled) {

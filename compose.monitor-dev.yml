@@ -1,0 +1,14 @@
+services:
+  monitor-service:
+    environment:
+      SPRING_PROFILES_ACTIVE: development
+      OPSPILOT_MONITOR_DEVELOPMENT_ALLOWED_ORIGINS: http://monitor-fixture:8090
+
+  monitor-fixture:
+    image: python:3.12-alpine
+    command: ["python", "-u", "/fixture.py"]
+    volumes:
+      - ./tests/monitor/fixture.py:/fixture.py:ro
+    networks:
+      backend:
+        aliases: [monitor-fixture-blocked]

@@ -1,6 +1,6 @@
 # OpsPilot
 
-OpsPilot is a portfolio-focused, polyglot incident-management platform. Milestone 2 phase 1 adds the Monitor CRUD API to the three-service foundation.
+OpsPilot is a portfolio-focused, polyglot incident-management platform. Milestone 2 adds the Monitor CRUD API and automated health checks to the three-service foundation.
 
 ## Architecture
 
@@ -12,7 +12,7 @@ OpsPilot is a portfolio-focused, polyglot incident-management platform. Mileston
 | PostgreSQL | database | internal only | Separate `monitor_db` and `incident_db` databases |
 | RabbitMQ | messaging | internal only | Event broker for later phases |
 
-The Monitor service runs Flyway migrations against `monitor_db` at startup. Scheduled checks, incident lifecycle, and RabbitMQ events are planned for later phases.
+The Monitor service runs Flyway migrations against `monitor_db` at startup. Incident lifecycle and RabbitMQ event delivery are planned for later phases.
 
 ## Prerequisites
 
@@ -91,6 +91,25 @@ If health returns `200` but `/api/monitors` returns `404` after an upgrade, rebu
 docker compose up -d --build --wait monitor-service
 python3 scripts/test-monitor-api.py
 ```
+
+## Automated monitoring
+
+Every five seconds the Monitor service dispatches due, enabled monitors to up to four workers. Each monitor uses its configured interval and HTTP timeout. HTTP 2xx is healthy. One success takes an `UNKNOWN` monitor to `UP`, three consecutive failures take it to `DOWN`, and two consecutive successes recover it. PostgreSQL stores the timestamp, elapsed time, status code, and error for each completed check in `monitor_checks`. State changes publish an in-process Spring event and appear in the service log.
+
+Monitor URLs accept HTTP and HTTPS without embedded credentials. The service rejects private, loopback, link-local, metadata, and other non-public destinations. It checks all resolved addresses on create and update, then resolves and validates each scheduled request and redirect again. Each connection uses a validated IP while preserving the hostname for HTTPS certificate verification.
+
+For local testing, the `development` Spring profile can use `OPSPILOT_MONITOR_DEVELOPMENT_ALLOWED_ORIGINS`, a comma-separated list of exact scheme, host, and port combinations. An entry permits IPv4 private and loopback destinations or IPv6 loopback for that origin. Link-local and known metadata destinations stay blocked. The base Compose configuration uses the default policy.
+
+From the project root, rebuild with the development fixture and run the integration script. It exercises private DNS, blocked and permitted redirects, timeouts, the state transitions, and the recorded check history.
+
+```bash
+docker compose -f compose.yml -f compose.monitor-dev.yml up -d --build --wait monitor-service monitor-fixture
+python3 scripts/test-monitor-checks.py
+```
+
+The script reads check history through `docker compose exec`. If you start Compose with `sudo`, run `python3 scripts/test-monitor-checks.py --sudo-docker` so the database checks use the same Docker access.
+
+To return the Monitor service to the default policy after testing, run `docker compose up -d --wait monitor-service`.
 
 ## Design notes
 

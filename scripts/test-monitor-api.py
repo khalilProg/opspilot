@@ -41,7 +41,7 @@ def main():
         "url": "https://example.com/health",
         "intervalSeconds": 30,
         "timeoutSeconds": 5,
-        "enabled": True,
+        "enabled": False,
     }
     request("GET", "/actuator/health", 200)
     request("POST", COLLECTION, 400, {**config, "url": "file:///tmp/test"})
@@ -78,7 +78,7 @@ def main():
             patched, _ = request("PATCH", path + "/enabled", 200, {"enabled": enabled})
             assert patched["enabled"] == enabled
             assert patched["updatedAt"] != updated["updatedAt"]
-            for key in updated.keys() - {"enabled", "updatedAt"}:
+            for key in updated.keys() - {"enabled", "updatedAt", "status", "consecutiveFailures"}:
                 assert patched[key] == updated[key]
             updated = patched
         assert request("GET", path, 200)[0] == updated
