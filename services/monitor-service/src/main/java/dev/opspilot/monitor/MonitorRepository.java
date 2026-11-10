@@ -123,14 +123,16 @@ class MonitorRepository {
     private void enqueue(DueMonitor monitor, MonitorHttpCheck.Result result, String routingKey) {
         jdbc.sql("""
                 INSERT INTO event_outbox (event_id, routing_key, payload)
-                VALUES (:id, :type, jsonb_build_object(
+                VALUES (:id, :type, jsonb_strip_nulls(jsonb_build_object(
                     'eventId', CAST(:id AS uuid), 'type', CAST(:type AS text), 'version', 1,
-                    'monitorId', CAST(:monitorId AS uuid), 'occurredAt', CAST(:occurredAt AS timestamptz)))
+                    'monitorId', CAST(:monitorId AS uuid), 'occurredAt', CAST(:occurredAt AS timestamptz),
+                    'reason', CAST(:reason AS text))))
                 """)
                 .param("id", UUID.randomUUID())
                 .param("type", routingKey)
                 .param("monitorId", monitor.id())
                 .param("occurredAt", result.checkedAt())
+                .param("reason", result.error(), Types.VARCHAR)
                 .update();
     }
 

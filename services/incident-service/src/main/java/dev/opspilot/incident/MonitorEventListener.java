@@ -66,7 +66,8 @@ class MonitorEventListener {
         channel.basicAck(tag, false);
     }
 
-    record MonitorEvent(UUID eventId, String type, int version, UUID monitorId, OffsetDateTime occurredAt) {
+    record MonitorEvent(UUID eventId, String type, int version, UUID monitorId, OffsetDateTime occurredAt,
+            String reason) {
         boolean valid(String routingKey, String messageId) {
             return version == 1 && eventId != null && monitorId != null && occurredAt != null
                     && ("monitor.down".equals(type) || "monitor.recovered".equals(type))

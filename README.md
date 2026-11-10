@@ -1,6 +1,6 @@
 # OpsPilot
 
-OpsPilot is a portfolio-focused, polyglot incident-management platform. Milestone 2 adds Monitor CRUD, automated health checks, and a RabbitMQ event pipeline to the three-service foundation.
+OpsPilot is a portfolio-focused, polyglot incident-management platform. Milestone 2 adds Monitor CRUD, automated health checks, a RabbitMQ event pipeline, and the Incident API to the three-service foundation.
 
 ## Architecture
 
@@ -137,6 +137,24 @@ python3 scripts/test-event-pipeline.py
 If you start Compose with `sudo`, use `python3 scripts/test-event-pipeline.py --sudo-docker`. The test deletes its monitor and leaves its incident, published events, and notification records available for inspection.
 
 To verify failure and replay behavior, run `python3 scripts/test-event-reliability.py --sudo-docker` on the same development stack. This test briefly stops RabbitMQ, replays its own events, and leaves two synthetic messages in the Incident dead-letter queue for inspection. It temporarily adds a database check constraint scoped to one test event ID and removes it after the retry test.
+
+## Incident API
+
+| Method | Path | Behavior |
+|---|---|---|
+| GET | `/api/incidents` | List incidents, newest first |
+| GET | `/api/incidents/{id}` | Get an incident, including its reason and lifecycle timestamps |
+| GET | `/api/incidents/{id}/transitions` | Read the incident's transition history in recorded order |
+| POST | `/api/incidents/{id}/acknowledge` | Acknowledge an open incident with no request body |
+
+The Incident service opens an incident from a `monitor.down` event and resolves the active incident from `monitor.recovered`. Acknowledgement can be repeated without adding another transition. Acknowledging a resolved incident returns `409 Conflict`, and unknown incident IDs return `404 Not Found`. Flyway backfills opening and resolution history for Phase 3 records. Incident state, history, and consumed event IDs live in `incident_db`. The Incident service reads monitor details from event payloads.
+
+Rebuild and run the lifecycle test from the project root. The script publishes synthetic monitor events through the existing outbox and keeps the resulting incidents and history available for inspection.
+
+```bash
+sudo docker compose up -d --build --wait monitor-service incident-service notification-service
+python3 scripts/test-incident-lifecycle.py --sudo-docker
+```
 
 ## Design notes
 
