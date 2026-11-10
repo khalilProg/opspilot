@@ -172,6 +172,18 @@ python3 scripts/test-notification-delivery.py --sudo-docker
 
 To return to the default JSON log sink, remove any `NOTIFICATION_WEBHOOK_URL` setting from the environment and run `sudo docker compose up -d --wait notification-service`.
 
+## Phase 6 release acceptance
+
+Run the full release check from the project root on the local development stack.
+
+```bash
+python3 scripts/test-release-acceptance.py --sudo-docker
+```
+
+The runner rebuilds the application images, starts both test fixtures, and runs the Java and Go suites, service smoke tests, and end-to-end scripts. The controlled outage stays active until the test verifies one open incident and its notification. The test then verifies the exact failure and recovery thresholds and compares persisted data before and after restarting all three application containers.
+
+The reliability checks briefly stop RabbitMQ, and the notification test restarts its consumer. The runner uses existing Compose volumes and leaves the development fixtures and test records available for inspection. A successful run prints `Phase 6 release acceptance passed (9/9).`
+
 ## Design notes
 
 - The database container is not published to the host. Services use Docker DNS (`postgres:5432`) and connect using least-privilege per-service users.

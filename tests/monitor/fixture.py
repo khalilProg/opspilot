@@ -5,12 +5,27 @@ from threading import Lock
 from time import sleep
 
 counts = Counter()
+recovered = set()
 lock = Lock()
 
 
 class Handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        if not self.path.startswith("/recover/"):
+            self.send_error(404)
+            return
+        with lock:
+            recovered.add(self.path.removeprefix("/recover/"))
+        self.send_response(204)
+        self.end_headers()
+
     def do_GET(self):
-        if self.path.startswith("/sequence/"):
+        if self.path.startswith("/acceptance/"):
+            with lock:
+                counts[self.path] += 1
+                healthy = counts[self.path] == 1 or self.path.removeprefix("/acceptance/") in recovered
+            self.send_response(200 if healthy else 503)
+        elif self.path.startswith("/sequence/"):
             with lock:
                 counts[self.path] += 1
                 attempt = counts[self.path]

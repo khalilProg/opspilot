@@ -36,9 +36,10 @@ def request(method, path, expected_status, payload=None):
 
 
 def main():
+    fixture = os.environ.get("MONITOR_TEST_TARGET_ORIGIN")
     config = {
         "name": f"CRUD test {uuid4()}",
-        "url": "https://example.com/health",
+        "url": f"{fixture}/ok" if fixture else "https://example.com/health",
         "intervalSeconds": 30,
         "timeoutSeconds": 5,
         "enabled": False,
@@ -61,7 +62,7 @@ def main():
         replacement = {
             **config,
             "name": config["name"] + " updated",
-            "url": "http://example.com/ready",
+            "url": f"{fixture}/ok?updated=1" if fixture else "http://example.com/ready",
             "intervalSeconds": 60,
             "timeoutSeconds": 10,
             "enabled": False,
