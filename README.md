@@ -1,18 +1,18 @@
 # OpsPilot
 
-OpsPilot is a portfolio-focused, polyglot incident-management platform. Milestone 1 provides two Java/Spring Boot services, one Go service, PostgreSQL, RabbitMQ, health endpoints, tests, and Docker Compose.
+OpsPilot is a portfolio-focused, polyglot incident-management platform. Milestone 2 phase 1 adds the Monitor CRUD API to the three-service foundation.
 
 ## Architecture
 
 | Service | Language | Local URL | Responsibility |
 |---|---|---|---|
-| monitor-service | Java / Spring Boot | http://localhost:8081 | Monitoring API (future) |
+| monitor-service | Java / Spring Boot | http://localhost:8081 | Monitor CRUD API |
 | incident-service | Java / Spring Boot | http://localhost:8082 | Incident lifecycle (future) |
 | notification-service | Go | http://localhost:8083 | Notifications (future) |
 | PostgreSQL | database | internal only | Separate `monitor_db` and `incident_db` databases |
-| RabbitMQ | messaging | internal only | Event broker for the next milestone |
+| RabbitMQ | messaging | internal only | Event broker for later phases |
 
-**Scope:** At this milestone, the services expose health/identity endpoints, not CRUD endpoints or message consumers. PostgreSQL is wired to the Java services; RabbitMQ is provisioned but event production/consumption begins in milestone 2.
+The Monitor service runs Flyway migrations against `monitor_db` at startup. Scheduled checks, incident lifecycle, and RabbitMQ events are planned for later phases.
 
 ## Prerequisites
 
@@ -42,6 +42,31 @@ Check logs with `docker compose logs -f monitor-service incident-service notific
 
 **Be careful:** `docker compose down -v` removes PostgreSQL and RabbitMQ volumes, including all local data. Run it only when you explicitly want a clean slate.
 
+## Monitor API
+
+| Method | Path | Success |
+|---|---|---|
+| POST | `/api/monitors` | `201 Created` with the new monitor and its `Location` |
+| GET | `/api/monitors` | `200 OK` with the list |
+| GET | `/api/monitors/{id}` | `200 OK` with one monitor |
+| PUT | `/api/monitors/{id}` | `200 OK` with the updated configuration |
+| DELETE | `/api/monitors/{id}` | `204 No Content` |
+| PATCH | `/api/monitors/{id}/enabled` | `200 OK` with the updated monitor |
+
+POST and PUT require all five configuration fields.
+
+```json
+{
+  "name": "Example website",
+  "url": "https://example.com/health",
+  "intervalSeconds": 30,
+  "timeoutSeconds": 5,
+  "enabled": true
+}
+```
+
+PATCH accepts an object such as `{"enabled": false}`. New monitors start with status `UNKNOWN` and zero consecutive failures. The service generates the UUID and timestamps. Invalid requests return `400 Bad Request`. Requests for an unknown monitor UUID return `404 Not Found`.
+
 ## Tests
 
 ```bash
@@ -51,6 +76,21 @@ docker compose run --rm --no-deps notification-service-test
 ```
 
 The Java tests check each service's identity controller directly. The Go tests exercise both HTTP handlers using the standard library. The smoke test checks the running services, including PostgreSQL connectivity through the Java health endpoints.
+
+With the Monitor service running, use Python 3 to test all six CRUD endpoints, validation errors, and missing IDs.
+
+```bash
+python3 scripts/test-monitor-api.py
+```
+
+Set `MONITOR_BASE_URL` if the service is running at an address other than `http://127.0.0.1:8081`.
+
+If health returns `200` but `/api/monitors` returns `404` after an upgrade, rebuild the Monitor image before rerunning the test.
+
+```bash
+docker compose up -d --build --wait monitor-service
+python3 scripts/test-monitor-api.py
+```
 
 ## Design notes
 
