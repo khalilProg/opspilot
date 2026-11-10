@@ -2,7 +2,7 @@ FROM golang:1.24-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
-COPY main.go events.go ./
+COPY main.go events.go notification.go ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /notification-service .
 
 FROM alpine:3.22

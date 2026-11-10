@@ -1,0 +1,11 @@
+services:
+  notification-service:
+    environment:
+      NOTIFICATION_WEBHOOK_URL: http://notification-webhook:8091/notifications
+
+  notification-webhook:
+    image: python:3.12-alpine
+    command: ["python", "-u", "/webhook.py"]
+    volumes:
+      - ./tests/notification/webhook.py:/webhook.py:ro
+    networks: [backend]

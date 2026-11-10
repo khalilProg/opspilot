@@ -30,7 +30,7 @@ func TestNotificationRecordIsIdempotent(t *testing.T) {
 	}
 	dir := t.TempDir()
 	for _, expected := range []bool{true, false} {
-		created, err := storeNotification(dir, parsed)
+		created, err := storeNotification(dir, notification{incidentEvent: parsed})
 		if err != nil || created != expected {
 			t.Fatalf("created = %t, want %t, error = %v", created, expected, err)
 		}

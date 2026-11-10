@@ -156,6 +156,22 @@ sudo docker compose up -d --build --wait monitor-service incident-service notifi
 python3 scripts/test-incident-lifecycle.py --sudo-docker
 ```
 
+## Notification delivery
+
+The Go consumer builds a structured notification from each valid incident event, including the event ID, monitor ID, incident ID, timestamp, title, and message. By default it writes a JSON log and a durable receipt in the `notification_data` volume. Set `NOTIFICATION_WEBHOOK_URL` in the Compose environment to send JSON via HTTP POST instead. The webhook is configured by the operator and redirects are disabled.
+
+The consumer acknowledges after successful delivery and receipt storage. Timeouts, HTTP 408, HTTP 429, and HTTP 5xx are retried through the broker. Malformed events and permanent webhook rejections go to the Notification dead-letter queue. A successful receipt suppresses further deliveries of the same event, including after a restart. Webhook requests include the event ID as `Idempotency-Key`. Receivers should honor this key because a crash after the webhook accepts a request and before the receipt is saved can cause a retry.
+
+Run the Phase 5 test with the local webhook fixture. It returns HTTP 503 on the first attempt and accepts the retry. The script restarts the Notification service and verifies that a replay skips the webhook while the next event is delivered.
+
+```bash
+sudo docker compose -f compose.yml -f compose.notification-dev.yml up -d --build --wait \
+  incident-service notification-service notification-webhook
+python3 scripts/test-notification-delivery.py --sudo-docker
+```
+
+To return to the default JSON log sink, remove any `NOTIFICATION_WEBHOOK_URL` setting from the environment and run `sudo docker compose up -d --wait notification-service`.
+
 ## Design notes
 
 - The database container is not published to the host. Services use Docker DNS (`postgres:5432`) and connect using least-privilege per-service users.

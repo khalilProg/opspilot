@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
@@ -38,6 +42,9 @@ func main() {
 		}
 		return
 	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	consumerDone := make(chan struct{})
 	if host := os.Getenv("RABBITMQ_HOST"); host != "" {
 		dir := os.Getenv("NOTIFICATION_DATA_DIR")
 		if dir == "" {
@@ -46,9 +53,42 @@ func main() {
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			log.Fatal(err)
 		}
-		go runIncidentConsumer(host, dir)
+		sink, err := newNotificationSink(dir, os.Getenv("NOTIFICATION_WEBHOOK_URL"))
+		if err != nil {
+			log.Fatal(err)
+		}
+		go func() {
+			defer close(consumerDone)
+			runIncidentConsumer(ctx, host, sink)
+		}()
+	} else {
+		close(consumerDone)
 	}
 	server := &http.Server{Addr: ":8080", Handler: router(), ReadHeaderTimeout: 5 * time.Second}
 	log.Println("notification-service listening on :8080")
-	log.Fatal(server.ListenAndServe())
+	serverDone := make(chan error, 1)
+	var serverError error
+	go func() { serverDone <- server.ListenAndServe() }()
+	select {
+	case <-ctx.Done():
+	case err := <-serverDone:
+		if !errors.Is(err, http.ErrServerClosed) {
+			serverError = err
+		}
+		stop()
+	}
+	shutdown, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdown); err != nil {
+		log.Printf("HTTP shutdown: %v", err)
+	}
+	select {
+	case <-consumerDone:
+		log.Print("Notification service shut down")
+	case <-shutdown.Done():
+		log.Print("Timed out waiting for the notification consumer")
+	}
+	if serverError != nil {
+		log.Fatal(serverError)
+	}
 }

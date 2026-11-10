@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -43,8 +44,8 @@ func parseEvent(body []byte, routingKey, messageID string) (incidentEvent, error
 	return event, nil
 }
 
-// The notification record is the durable side effect and the deduplication marker.
-func storeNotification(dir string, event incidentEvent) (bool, error) {
+// The notification record marks successful processing across restarts.
+func storeNotification(dir string, event notification) (bool, error) {
 	file, err := os.CreateTemp(dir, ".pending-")
 	if err != nil {
 		return false, err
@@ -68,25 +69,19 @@ func storeNotification(dir string, event incidentEvent) (bool, error) {
 		return false, err
 	}
 	created := err == nil
-	directory, err := os.Open(dir)
-	if err != nil {
-		return false, err
-	}
-	defer directory.Close()
-	return created, directory.Sync()
+	return created, syncDirectory(dir)
 }
 
-func consumeIncidentEvents(address, dir string) error {
-	connection, err := amqp.Dial(address)
+func consumeIncidentEvents(ctx context.Context, address string, sink *notificationSink) error {
+	connection, err := amqp.DialConfig(address, amqp.Config{Dial: amqp.DefaultDial(5 * time.Second)})
 	if err != nil {
 		return err
 	}
-	defer connection.Close()
+	defer func() { _ = connection.CloseDeadline(time.Now().Add(2 * time.Second)) }()
 	channel, err := connection.Channel()
 	if err != nil {
 		return err
 	}
-	defer channel.Close()
 
 	if err := channel.ExchangeDeclare(eventExchange, "topic", true, false, false, false, nil); err != nil {
 		return err
@@ -113,7 +108,20 @@ func consumeIncidentEvents(address, dir string) error {
 	if err != nil {
 		return err
 	}
-	for delivery := range deliveries {
+	for {
+		var delivery amqp.Delivery
+		select {
+		case <-ctx.Done():
+			return nil
+		case received, ok := <-deliveries:
+			if !ok {
+				return errors.New("RabbitMQ consumer closed")
+			}
+			if ctx.Err() != nil {
+				return nil
+			}
+			delivery = received
+		}
 		event, err := parseEvent(delivery.Body, delivery.RoutingKey, delivery.MessageId)
 		if err != nil {
 			log.Print("Rejecting malformed incident event")
@@ -122,34 +130,42 @@ func consumeIncidentEvents(address, dir string) error {
 			}
 			continue
 		}
-		created, err := storeNotification(dir, event)
-		if err != nil {
-			log.Printf("Could not store incident event %s: %v", event.EventID, err)
-			if err := delivery.Reject(true); err != nil {
+		if err := sink.process(event); err != nil {
+			log.Printf("Could not deliver incident event %s: %v", event.EventID, err)
+			retry := !errors.Is(err, errWebhookRejected)
+			if retry {
+				// Give temporary failures time to clear before the next broker delivery.
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-time.After(time.Second):
+				}
+			}
+			if err := delivery.Reject(retry); err != nil {
 				return err
 			}
 			continue
-		}
-		if created {
-			log.Printf("Recorded %s event %s for incident %s", event.Type, event.EventID, event.IncidentID)
 		}
 		if err := delivery.Ack(false); err != nil {
 			return err
 		}
 	}
-	return errors.New("RabbitMQ consumer closed")
 }
 
-func runIncidentConsumer(host, dir string) {
+func runIncidentConsumer(ctx context.Context, host string, sink *notificationSink) {
 	address := url.URL{
 		Scheme: "amqp",
 		Host:   net.JoinHostPort(host, "5672"),
 		User:   url.UserPassword(os.Getenv("RABBITMQ_USER"), os.Getenv("RABBITMQ_PASSWORD")),
 	}
-	for {
-		if err := consumeIncidentEvents(address.String(), dir); err != nil {
+	for ctx.Err() == nil {
+		if err := consumeIncidentEvents(ctx, address.String(), sink); err != nil && ctx.Err() == nil {
 			log.Printf("Incident consumer disconnected: %v", err)
 		}
-		time.Sleep(2 * time.Second)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(2 * time.Second):
+		}
 	}
 }
