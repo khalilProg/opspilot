@@ -1,7 +1,8 @@
+import { Link } from 'react-router'
 import type { Incident, Monitor } from '../types/operations'
 
 const statusStyles = {
-  UP: ['Operational', 'bg-emerald-50 text-emerald-800'],
+  UP: ['Up', 'bg-emerald-50 text-emerald-800'],
   DOWN: ['Down', 'bg-rose-50 text-rose-800'],
   UNKNOWN: ['Unknown', 'bg-slate-100 text-slate-700'],
   PAUSED: ['Paused', 'bg-slate-100 text-slate-700'],
@@ -12,9 +13,13 @@ const statusStyles = {
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
-function Status({ status }: { status: keyof typeof statusStyles }) {
+export function Status({ status }: { status: keyof typeof statusStyles }) {
   const [label, color] = statusStyles[status] ?? statusStyles.UNKNOWN
   return <span className={`w-fit shrink-0 rounded-full px-2.5 py-1 text-sm font-medium ${color}`}>{label}</span>
+}
+
+export function monitorStatus(monitor: Monitor) {
+  return monitor.enabled ? monitor.status : 'PAUSED'
 }
 
 export function MonitorList({ monitors }: { monitors: Monitor[] }) {
@@ -23,10 +28,12 @@ export function MonitorList({ monitors }: { monitors: Monitor[] }) {
       {monitors.map((monitor) => (
         <li key={monitor.id} className="flex flex-wrap items-start justify-between gap-3 px-5 py-4">
           <div className="min-w-0 flex-1 basis-44">
-            <p className="font-semibold wrap-anywhere">{monitor.name}</p>
+            <Link to={`/monitors/${monitor.id}`} className="action-link text-base wrap-anywhere">
+              {monitor.name}
+            </Link>
             <p className="mt-1 text-sm text-muted wrap-anywhere">{monitor.url}</p>
           </div>
-          <Status status={monitor.enabled ? monitor.status : 'PAUSED'} />
+          <Status status={monitorStatus(monitor)} />
         </li>
       ))}
     </ul>

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { StrictMode } from 'react'
+import { lazy, StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Route, Routes } from 'react-router'
 import { DashboardLayout } from './layouts/DashboardLayout'
@@ -8,6 +8,8 @@ import { MonitorsPage } from './pages/MonitorsPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { OverviewPage } from './pages/OverviewPage'
 import './styles.css'
+
+const MonitorDetailPage = lazy(() => import('./pages/MonitorDetailPage'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,6 +25,11 @@ createRoot(document.getElementById('root')!).render(
           <Route element={<DashboardLayout />}>
             <Route index element={<OverviewPage />} />
             <Route path="monitors" element={<MonitorsPage />} />
+            <Route path="monitors/:monitorId" element={
+              <Suspense fallback={<p role="status">Loading monitor…</p>}>
+                <MonitorDetailPage />
+              </Suspense>
+            } />
             <Route path="incidents" element={<IncidentsPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>

@@ -1,6 +1,7 @@
 package dev.opspilot.monitor;
 
 import java.sql.Types;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -41,6 +42,36 @@ class MonitorRepository {
                 .param(id)
                 .query(rowMapper)
                 .optional();
+    }
+
+    Optional<List<MonitorCheck>> findRecentChecks(UUID id) {
+        return jdbc.sql("""
+                SELECT checks.id, checks.checked_at, checks.response_time_ms, checks.http_status, checks.error
+                FROM monitors
+                LEFT JOIN LATERAL (
+                    SELECT id, checked_at, response_time_ms, http_status, error
+                    FROM monitor_checks
+                    WHERE monitor_id = monitors.id
+                    ORDER BY id DESC
+                    LIMIT 20
+                ) checks ON true
+                WHERE monitors.id = ?
+                ORDER BY checks.id DESC
+                """)
+                .param(id)
+                .query(result -> {
+                    if (!result.next()) {
+                        return Optional.empty();
+                    }
+                    var rowMapper = new DataClassRowMapper<>(MonitorCheck.class);
+                    var checks = new ArrayList<MonitorCheck>();
+                    do {
+                        if (result.getObject("id") != null) {
+                            checks.add(rowMapper.mapRow(result, checks.size()));
+                        }
+                    } while (result.next());
+                    return Optional.of(checks);
+                });
     }
 
     Optional<Monitor> update(UUID id, String name, String url, int intervalSeconds, int timeoutSeconds,

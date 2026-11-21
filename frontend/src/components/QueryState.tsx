@@ -4,10 +4,10 @@ import type { ReactNode } from 'react'
 import { ApiError } from '../api/client'
 
 interface QueryStateProps<T> {
-  query: UseQueryResult<T[]>
+  query: UseQueryResult<T>
   subject: string
-  emptyMessage: string
-  children: (data: T[]) => ReactNode
+  emptyMessage?: string
+  children: (data: T) => ReactNode
 }
 
 export function QueryState<T>({ query, subject, emptyMessage, children }: QueryStateProps<T>) {
@@ -42,7 +42,7 @@ export function QueryState<T>({ query, subject, emptyMessage, children }: QueryS
     )
   }
 
-  if (query.data.length === 0) {
+  if (Array.isArray(query.data) && query.data.length === 0 && emptyMessage) {
     return (
       <div className="flex min-h-44 flex-col items-center justify-center gap-3 px-5 py-8 text-center text-muted">
         <span className="grid size-10 place-items-center rounded-full bg-canvas">

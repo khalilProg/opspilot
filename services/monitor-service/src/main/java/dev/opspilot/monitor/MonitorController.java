@@ -55,6 +55,11 @@ class MonitorController {
         return monitors.find(id).orElseThrow(MonitorController::notFound);
     }
 
+    @GetMapping("/{id}/checks")
+    List<MonitorCheck> checks(@PathVariable UUID id) {
+        return monitors.findRecentChecks(id).orElseThrow(MonitorController::notFound);
+    }
+
     @PutMapping("/{id}")
     Monitor update(@PathVariable UUID id, @Valid @RequestBody Configuration config) {
         validateTarget(config.url());

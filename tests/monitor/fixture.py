@@ -43,6 +43,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
         elif self.path == "/ok":
             self.send_response(200)
+        elif self.path == "/unavailable":
+            self.send_response(503)
         else:
             self.send_response(404)
         try:
