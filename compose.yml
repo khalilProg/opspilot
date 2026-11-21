@@ -1,5 +1,21 @@
 name: opspilot
 services:
+  gateway:
+    build:
+      context: ./frontend
+      additional_contexts:
+        nginx_config: ./infrastructure/nginx
+    restart: unless-stopped
+    ports: ["127.0.0.1:3000:80"]
+    depends_on:
+      monitor-service: {condition: service_healthy}
+      incident-service: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks: [gateway]
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
@@ -41,7 +57,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/monitor_db
       SPRING_DATASOURCE_USERNAME: monitor_user
       SPRING_DATASOURCE_PASSWORD: ${MONITOR_DB_PASSWORD:?Missing monitor password}
-    ports: ["127.0.0.1:8081:8080"]
+      SERVER_FORWARD_HEADERS_STRATEGY: framework
     depends_on:
       postgres: {condition: service_healthy}
       rabbitmq: {condition: service_healthy}
@@ -51,7 +67,7 @@ services:
       timeout: 5s
       start_period: 40s
       retries: 5
-    networks: [backend]
+    networks: [backend, gateway]
   incident-service:
     build: ./services/incident-service
     restart: unless-stopped
@@ -62,7 +78,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/incident_db
       SPRING_DATASOURCE_USERNAME: incident_user
       SPRING_DATASOURCE_PASSWORD: ${INCIDENT_DB_PASSWORD:?Missing incident password}
-    ports: ["127.0.0.1:8082:8080"]
+      SERVER_FORWARD_HEADERS_STRATEGY: framework
     depends_on:
       postgres: {condition: service_healthy}
       rabbitmq: {condition: service_healthy}
@@ -72,7 +88,7 @@ services:
       timeout: 5s
       start_period: 40s
       retries: 5
-    networks: [backend]
+    networks: [backend, gateway]
   notification-service:
     stop_grace_period: 15s
     build: ./services/notification-service
@@ -85,7 +101,6 @@ services:
       NOTIFICATION_WEBHOOK_URL: ${NOTIFICATION_WEBHOOK_URL:-}
     volumes:
       - notification_data:/app/data
-    ports: ["127.0.0.1:8083:8080"]
     depends_on:
       rabbitmq: {condition: service_healthy}
     healthcheck:
@@ -118,3 +133,4 @@ volumes:
   notification_data:
 networks:
   backend:
+  gateway:

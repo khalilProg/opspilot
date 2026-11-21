@@ -6,9 +6,10 @@ OpsPilot is a portfolio-focused, polyglot incident-management platform. Mileston
 
 | Service | Language | Local URL | Responsibility |
 |---|---|---|---|
-| monitor-service | Java / Spring Boot | http://localhost:8081 | Monitor CRUD API |
-| incident-service | Java / Spring Boot | http://localhost:8082 | Opens and resolves incidents from monitor events |
-| notification-service | Go | http://localhost:8083 | Records incident notifications |
+| gateway | Nginx | http://localhost:3000 | Serves the OpsPilot landing page and proxies the APIs |
+| monitor-service | Java / Spring Boot | http://localhost:3000/api/monitors | Monitor CRUD API |
+| incident-service | Java / Spring Boot | http://localhost:3000/api/incidents | Opens and resolves incidents from monitor events |
+| notification-service | Go | internal only | Records incident notifications |
 | PostgreSQL | database | internal only | Separate `monitor_db` and `incident_db` databases |
 | RabbitMQ | messaging | internal only | Topic exchange for monitor and incident events |
 
@@ -16,29 +17,22 @@ The Java services run Flyway migrations against their respective databases at st
 
 ## Prerequisites
 
-- Docker Engine with the Docker Compose v2 plugin
-- `curl` for smoke tests
+- Docker Engine with BuildKit and Docker Compose 2.17 or newer
+- `curl` and Python 3 for smoke tests
 - No local Java, Maven, Go, or database installation is required to use Compose.
 
 ## Quick start
 
 ```bash
-cp .env.example .env
-docker compose up --build -d
+test -f .env || cp .env.example .env
+docker compose up --build -d --wait
 docker compose ps
 ./scripts/smoke-test.sh
 ```
 
-Open:
+Open http://localhost:3000. The gateway serves a static landing page at `/` for the first step of the dashboard rollout. It preserves upstream HTTP status codes and logs each response's `X-Request-ID`. The local gateway health endpoint at `/healthz` reports whether Nginx is responding. Compose checks the health of the Spring services, PostgreSQL, RabbitMQ, and the notification worker separately.
 
-- http://localhost:8081/api/info
-- http://localhost:8082/api/info
-- http://localhost:8083/api/info
-- http://localhost:8081/actuator/health
-- http://localhost:8082/actuator/health
-- http://localhost:8083/health
-
-Check logs with `docker compose logs -f monitor-service incident-service notification-service`. Stop without deleting data using `docker compose down`.
+Check logs with `docker compose logs -f gateway monitor-service incident-service notification-service`. Stop without deleting data using `docker compose down`.
 
 **Be careful:** `docker compose down -v` removes PostgreSQL and RabbitMQ volumes, including all local data. Run it only when you explicitly want a clean slate.
 
@@ -75,7 +69,7 @@ docker compose run --rm --no-deps incident-service-test
 docker compose run --rm --no-deps notification-service-test
 ```
 
-The Java tests check each service's identity controller directly. The Go tests exercise both HTTP handlers using the standard library. The smoke test checks the running services, including PostgreSQL connectivity through the Java health endpoints.
+The Java tests check each service's identity controller directly. The Go tests exercise both HTTP handlers using the standard library. The smoke test checks the landing page, both API collections, upstream `400` and `404` responses, request IDs, and the boundaries of gateway routing. It does not create any records. Set `GATEWAY_BASE_URL` to test a gateway at a different address.
 
 With the Monitor service running, use Python 3 to test all six CRUD endpoints, validation errors, and missing IDs.
 
@@ -83,12 +77,12 @@ With the Monitor service running, use Python 3 to test all six CRUD endpoints, v
 python3 scripts/test-monitor-api.py
 ```
 
-Set `MONITOR_BASE_URL` if the service is running at an address other than `http://127.0.0.1:8081`.
+Set `MONITOR_BASE_URL` to use an address other than the default gateway at `http://localhost:3000`.
 
 If health returns `200` but `/api/monitors` returns `404` after an upgrade, rebuild the Monitor image before rerunning the test.
 
 ```bash
-docker compose up -d --build --wait monitor-service
+docker compose up -d --build --wait gateway
 python3 scripts/test-monitor-api.py
 ```
 
@@ -103,7 +97,7 @@ For local testing, the `development` Spring profile can use `OPSPILOT_MONITOR_DE
 From the project root, rebuild with the development fixture and run the integration script. It exercises private DNS, blocked and permitted redirects, timeouts, the state transitions, and the recorded check history.
 
 ```bash
-docker compose -f compose.yml -f compose.monitor-dev.yml up -d --build --wait monitor-service monitor-fixture
+docker compose -f compose.yml -f compose.monitor-dev.yml up -d --build --wait gateway monitor-fixture
 python3 scripts/test-monitor-checks.py
 ```
 
@@ -130,7 +124,7 @@ Rebuild all three services with the local monitoring fixture, then run the event
 
 ```bash
 docker compose -f compose.yml -f compose.monitor-dev.yml up -d --build --wait \
-  monitor-service incident-service notification-service monitor-fixture
+  gateway notification-service monitor-fixture
 python3 scripts/test-event-pipeline.py
 ```
 
@@ -152,7 +146,7 @@ The Incident service opens an incident from a `monitor.down` event and resolves 
 Rebuild and run the lifecycle test from the project root. The script publishes synthetic monitor events through the existing outbox and keeps the resulting incidents and history available for inspection.
 
 ```bash
-sudo docker compose up -d --build --wait monitor-service incident-service notification-service
+sudo docker compose up -d --build --wait gateway notification-service
 python3 scripts/test-incident-lifecycle.py --sudo-docker
 ```
 
@@ -180,7 +174,7 @@ Run the full release check from the project root on the local development stack.
 python3 scripts/test-release-acceptance.py --sudo-docker
 ```
 
-The runner rebuilds the application images, starts both test fixtures, and runs the Java and Go suites, service smoke tests, and end-to-end scripts. The controlled outage stays active until the test verifies one open incident and its notification. The test then verifies the exact failure and recovery thresholds and compares persisted data before and after restarting all three application containers.
+The runner rebuilds the application images, starts both test fixtures, and runs the Java and Go suites, gateway smoke test, and end-to-end scripts. The controlled outage stays active until the test verifies one open incident and its notification. The test then verifies the exact failure and recovery thresholds and compares persisted data before and after restarting all three application containers.
 
 The reliability checks briefly stop RabbitMQ, and the notification test restarts its consumer. The runner uses existing Compose volumes and leaves the development fixtures and test records available for inspection. A successful run prints `Phase 6 release acceptance passed (9/9).`
 
@@ -189,7 +183,7 @@ The reliability checks briefly stop RabbitMQ, and the notification test restarts
 - The database container is not published to the host. Services use Docker DNS (`postgres:5432`) and connect using least-privilege per-service users.
 - `.env` is ignored by Git. `.env.example` contains local-development values only; use managed secrets in deployment environments.
 - Container images run the app with non-root users.
-- The HTTP application ports are bound to `127.0.0.1`, not all host interfaces.
+- The gateway alone publishes a host port, bound to `127.0.0.1:3000`. Its Docker network is shared with the two Spring services. PostgreSQL, RabbitMQ, and the Go worker are on the backend network.
 - Docker Compose waits for database and broker health checks before starting the Java/Go services, but applications should still handle transient dependency failure.
 - For production, avoid exposing Actuator details, use TLS, secret rotation, database migrations, durable messaging settings, and immutable image references.
 

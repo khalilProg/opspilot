@@ -8,7 +8,7 @@ from urllib.request import Request, urlopen
 from uuid import UUID, uuid4
 
 
-BASE_URL = os.environ.get("MONITOR_BASE_URL", "http://127.0.0.1:8081").rstrip("/")
+BASE_URL = os.environ.get("MONITOR_BASE_URL", "http://localhost:3000").rstrip("/")
 COLLECTION = "/api/monitors"
 
 
@@ -26,7 +26,7 @@ def request(method, path, expected_status, payload=None):
             raise SystemExit(
                 f"Monitor CRUD is unavailable at {BASE_URL}{COLLECTION}. "
                 "If you are using Compose, rebuild the service with "
-                "`docker compose up -d --build --wait monitor-service`. "
+                "`docker compose up -d --build --wait gateway`. "
                 "Otherwise, check MONITOR_BASE_URL and the running Monitor service version."
             )
         assert response.status == expected_status, (method, path, response.status, raw)
@@ -44,7 +44,7 @@ def main():
         "timeoutSeconds": 5,
         "enabled": False,
     }
-    request("GET", "/actuator/health", 200)
+    request("GET", COLLECTION, 200)
     request("POST", COLLECTION, 400, {**config, "url": "file:///tmp/test"})
     request("POST", COLLECTION, 400, {**config, "name": " ", "intervalSeconds": 0})
     request("POST", COLLECTION, 400, {**config, "enabled": None})
@@ -52,7 +52,11 @@ def main():
     path = f"{COLLECTION}/{UUID(created['id'])}"
     deleted = False
     try:
-        assert urlparse(headers["Location"]).path == path
+        location = urlparse(headers["Location"])
+        assert location.path == path
+        if location.netloc:
+            origin = urlparse(BASE_URL)
+            assert (location.scheme, location.netloc) == (origin.scheme, origin.netloc)
         assert all(created[key] == value for key, value in config.items())
         assert created["status"] == "UNKNOWN" and created["consecutiveFailures"] == 0
         assert created["createdAt"] == created["updatedAt"]

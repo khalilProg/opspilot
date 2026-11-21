@@ -12,7 +12,7 @@ from uuid import UUID, uuid4
 
 checks = run_path(str(Path(__file__).with_name("test-monitor-checks.py")))
 query = checks["query_database"]
-base_url = os.environ.get("INCIDENT_BASE_URL", "http://127.0.0.1:8082").rstrip("/")
+base_url = os.environ.get("INCIDENT_BASE_URL", "http://localhost:3000").rstrip("/")
 collection = "/api/incidents"
 
 

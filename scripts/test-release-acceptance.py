@@ -50,13 +50,13 @@ def main():
     ])
     run("Build and start release candidates", compose + [
         "up", "-d", "--build", "--wait", "--wait-timeout", "120",
-        "monitor-service", "incident-service", "notification-service", "monitor-fixture", "notification-webhook",
+        "gateway", "notification-service", "monitor-fixture", "notification-webhook",
     ])
 
     for service in ("monitor-service", "incident-service", "notification-service"):
         run(f"{service} automated tests", compose + ["run", "--rm", "--no-deps", f"{service}-test"])
 
-    run("Service health and identity", ["sh", "scripts/smoke-test.sh"])
+    run("Gateway and API smoke test", ["sh", "scripts/smoke-test.sh"])
     script("test-monitor-api.py", env={**os.environ, "MONITOR_TEST_TARGET_ORIGIN": "http://monitor-fixture:8090"})
     script("test-monitor-checks.py", docker_access=True)
     script("test-event-pipeline.py", docker_access=True, extra=("--acceptance",))
