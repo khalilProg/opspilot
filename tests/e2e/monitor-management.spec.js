@@ -20,8 +20,15 @@ test('creates, edits, enables, disables and deletes a monitor from the dashboard
 
   try {
     await page.goto('/monitors')
-    await page.getByRole('button', { name: 'New monitor', exact: true }).click()
+    const newMonitor = page.getByRole('button', { name: 'New monitor', exact: true })
+    await newMonitor.focus()
+    await page.keyboard.press('Enter')
     const create = page.getByRole('dialog', { name: 'New monitor' })
+    await expect(create).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(create).toHaveCount(0)
+    await expect(newMonitor).toBeFocused()
+    await newMonitor.click()
     await create.getByLabel('Name', { exact: true }).fill(name)
     await create.getByLabel('URL', { exact: true }).fill('http://localhost/health')
     await create.getByLabel('Enable checks', { exact: true }).uncheck()

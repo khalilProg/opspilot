@@ -1,6 +1,6 @@
 import { Pencil } from 'lucide-react'
 import { useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams } from 'react-router'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { DeleteMonitorDialog, MonitorActionError, MonitorForm } from '../components/MonitorDialogs'
 import { monitorStatus, Status } from '../components/OperationLists'
@@ -11,6 +11,7 @@ import { useMonitor, useMonitorChecks } from '../hooks/useOperations'
 import type { Monitor, MonitorCheck } from '../types/operations'
 
 const timestampFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' })
+const milliseconds = new Intl.NumberFormat(undefined, { style: 'unit', unit: 'millisecond' })
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit', second: '2-digit' })
 
 function CheckHistory({ checks }: { checks: MonitorCheck[] }) {
@@ -18,38 +19,48 @@ function CheckHistory({ checks }: { checks: MonitorCheck[] }) {
   return (
     <>
       <div className="p-5">
-        <p className="text-sm font-medium text-muted">Latest response time</p>
-        <p className="mt-1 text-2xl font-semibold tabular-nums">{latest.responseTimeMs} ms</p>
-        <div className="mt-5 h-56 min-w-0">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-medium text-muted">Latest response time</p>
+          {checks.some(({ error }) => error) && (
+            <span className="inline-flex items-center gap-1.5 text-sm text-muted">
+              <span className="size-2 rounded-full bg-bad" aria-hidden="true" /> Failed check
+            </span>
+          )}
+        </div>
+        <p className="mt-1 text-2xl font-semibold tabular-nums">{milliseconds.format(latest.responseTimeMs)}</p>
+        <div className="mt-5 h-48 min-w-0 sm:h-56" role="group" aria-label="Response time trend in milliseconds">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={[...checks].reverse()} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
-              <CartesianGrid stroke="#dfe6f0" vertical={false} />
+              <CartesianGrid stroke="var(--line)" vertical={false} />
               <XAxis
                 dataKey="checkedAt"
                 tickFormatter={(value: string) => timeFormat.format(new Date(value))}
-                tick={{ fill: '#52617a', fontSize: 12 }}
+                tick={{ fill: 'var(--muted)', fontSize: 12 }}
                 minTickGap={30}
               />
-              <YAxis domain={[0, 'auto']} unit=" ms" tick={{ fill: '#52617a', fontSize: 12 }} width={78} />
+              <YAxis domain={[0, 'auto']} unit=" ms" tick={{ fill: 'var(--muted)', fontSize: 12 }} width={78} />
               <Tooltip labelFormatter={(value) => timestampFormat.format(new Date(String(value)))} />
               <Line
                 type="linear"
                 dataKey="responseTimeMs"
                 name="Response time"
                 unit=" ms"
-                stroke="#2851bd"
+                stroke="var(--accent)"
                 strokeWidth={2}
-                dot={{ r: 3 }}
+                dot={({ cx, cy, payload }) => (
+                  <circle cx={cx} cy={cy} r={payload.error ? 4 : 3}
+                    fill={payload.error ? 'var(--bad)' : 'var(--accent)'} />
+                )}
                 isAnimationActive={false}
               />
             </LineChart>
           </ResponsiveContainer>
         </div>
       </div>
-      <div className="overflow-x-auto">
+      <div className="max-h-64 overflow-auto" tabIndex={0} role="region" aria-label="Scrollable check history">
         <table className="w-full text-left text-sm">
           <caption className="sr-only">Recent monitor checks</caption>
-          <thead className="border-y border-line bg-canvas text-muted">
+          <thead className="sticky top-0 border-y border-line bg-canvas text-muted">
             <tr>
               <th scope="col" className="px-5 py-3 font-medium">Checked at</th>
               <th scope="col" className="px-4 py-3 font-medium">Response time</th>
@@ -62,8 +73,8 @@ function CheckHistory({ checks }: { checks: MonitorCheck[] }) {
                 <td className="px-5 py-3">
                   <time dateTime={check.checkedAt}>{timestampFormat.format(new Date(check.checkedAt))}</time>
                 </td>
-                <td className="px-4 py-3 whitespace-nowrap tabular-nums">{check.responseTimeMs} ms</td>
-                <td className={`px-5 py-3 ${check.error ? 'text-rose-800' : 'text-emerald-800'}`}>
+                <td className="px-4 py-3 whitespace-nowrap tabular-nums">{milliseconds.format(check.responseTimeMs)}</td>
+                <td className={`px-5 py-3 ${check.error ? 'text-bad' : 'text-good'}`}>
                   {check.error || `HTTP ${check.httpStatus}`}
                 </td>
               </tr>
@@ -96,7 +107,7 @@ function MonitorConfiguration({ monitor }: { monitor: Monitor }) {
   const dismiss = () => setDialog(null)
 
   return (
-    <section className="panel mb-5" aria-labelledby="configuration-heading">
+    <section className="panel" aria-labelledby="configuration-heading">
       <div className="panel-heading">
         <h2 id="configuration-heading" className="font-semibold">Configuration</h2>
         <button type="button" className="button-secondary" disabled={toggle.isPending} onClick={() => setDialog('edit')}>
@@ -104,7 +115,7 @@ function MonitorConfiguration({ monitor }: { monitor: Monitor }) {
           Edit monitor
         </button>
       </div>
-      <dl className="grid grid-cols-2 gap-4 px-5 py-4 sm:grid-cols-3">
+      <dl className="grid grid-cols-2 gap-4 px-5 py-4 sm:grid-cols-3 xl:grid-cols-2">
         <div>
           <dt className="text-sm font-medium text-muted">Check interval</dt>
           <dd className="mt-1">{monitor.intervalSeconds} seconds</dd>
@@ -130,7 +141,7 @@ function MonitorConfiguration({ monitor }: { monitor: Monitor }) {
         </button>
         <button
           type="button"
-          className="button-secondary ml-auto text-rose-800"
+          className="button-secondary ml-auto text-bad"
           disabled={toggle.isPending}
           onClick={() => setDialog('delete')}
         >
@@ -151,18 +162,19 @@ export default function MonitorDetailPage() {
 
   return (
     <>
-      <p className="mb-5"><Link to="/monitors" className="action-link">All monitors</Link></p>
       <QueryState query={monitor} subject="monitor">
         {(data) => (
           <>
-            <div className="flex flex-wrap items-start justify-between gap-x-4">
+            <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 wrap-anywhere">
                 <PageHeading title={data.name} description={data.url} />
               </div>
               <Status status={monitorStatus(data)} />
             </div>
-            <MonitorConfiguration key={data.id} monitor={data} />
-            <RecentChecks monitorId={data.id} />
+            <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_19rem]">
+              <RecentChecks monitorId={data.id} />
+              <MonitorConfiguration key={data.id} monitor={data} />
+            </div>
           </>
         )}
       </QueryState>

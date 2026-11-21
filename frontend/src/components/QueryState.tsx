@@ -25,7 +25,7 @@ export function QueryState<T>({ query, subject, emptyMessage, children }: QueryS
     return (
       <div className="flex min-h-44 flex-col items-center justify-center gap-3 px-5 py-8 text-center">
         <div role="alert">
-          <CircleAlert aria-hidden="true" className="mx-auto mb-3 size-6 text-rose-700" />
+          <CircleAlert aria-hidden="true" className="mx-auto mb-3 size-6 text-bad" />
           <p className="font-semibold">Couldn’t load {subject}</p>
           <p className="mt-1 text-sm text-muted">{error?.message ?? 'Couldn’t reach the gateway.'}</p>
           {error?.requestId && <p className="mt-1 text-xs text-muted break-all">Request ID {error.requestId}</p>}
@@ -34,7 +34,7 @@ export function QueryState<T>({ query, subject, emptyMessage, children }: QueryS
           type="button"
           onClick={() => void query.refetch()}
           disabled={query.isFetching}
-          className="rounded-lg border border-line px-3 py-2 text-sm font-semibold text-accent hover:bg-blue-50 disabled:opacity-60"
+          className="button-secondary"
         >
           {query.isFetching ? 'Retrying…' : 'Try again'}
         </button>

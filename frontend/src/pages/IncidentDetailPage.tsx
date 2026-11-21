@@ -60,7 +60,7 @@ function IncidentDetails({ incident, monitor }: { incident: Incident; monitor?: 
 
   return (
     <>
-      <PageHeading title={monitor?.name ?? 'Incident details'} description={incident.reason} />
+      <div className="mb-6"><PageHeading title={monitor?.name ?? 'Incident details'} description={incident.reason} /></div>
       <section className="panel" aria-labelledby="lifecycle-heading">
         <div className="panel-heading">
           <h2 id="lifecycle-heading" className="font-semibold">Incident lifecycle</h2>
@@ -71,8 +71,8 @@ function IncidentDetails({ incident, monitor }: { incident: Incident; monitor?: 
         </div>
         <div className="space-y-4 px-5 py-4">
           <p role="status" className={incident.status === 'RESOLVED'
-            ? 'flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-emerald-900'
-            : 'text-muted'}>
+            ? 'flex items-center gap-2 rounded-lg bg-good-soft px-3 py-2 text-pretty text-good'
+            : 'text-pretty text-muted'}>
             {incident.status === 'RESOLVED' && <CircleCheck aria-hidden="true" size={18} className="shrink-0" />}
             {lifecycleMessages[incident.status]}
           </p>
@@ -90,7 +90,7 @@ function IncidentDetails({ incident, monitor }: { incident: Incident; monitor?: 
               : <>Monitor ID {incident.monitorId}</>}
           </p>
           {acknowledge.isError && (
-            <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900">
+            <div role="alert" className="rounded-lg border border-line bg-bad-soft px-3 py-2 text-sm text-bad">
               <p>{error?.status === 409 ? 'This incident has already been resolved.'
                 : error?.message ?? 'Couldn’t reach the gateway. Try again.'}</p>
               {error?.requestId && <p className="mt-1 text-xs break-all">Request ID {error.requestId}</p>}
@@ -115,7 +115,6 @@ export function IncidentDetailPage() {
 
   return (
     <>
-      <p className="mb-5"><Link to="/incidents" className="action-link">All incidents</Link></p>
       <QueryState query={incident} subject="incident">
         {(data) => (
           <IncidentDetails key={data.id} incident={data} monitor={monitors.data?.find(({ id }) => id === data.monitorId)} />

@@ -1,53 +1,98 @@
 @import "tailwindcss";
 
-@theme {
+@theme inline {
   --font-sans: "Geist", "Segoe UI", system-ui, sans-serif;
-  --color-canvas: #f3f5f9;
-  --color-ink: #17243b;
-  --color-muted: #52617a;
-  --color-line: #dfe6f0;
-  --color-accent: #2851bd;
-  --color-sidebar: #111e34;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-fill: var(--accent-fill);
+  --color-accent-ink: var(--accent-ink);
+  --color-sidebar: var(--sidebar);
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+}
+
+:root {
+  color-scheme: dark;
+  --canvas: #15151d;
+  --surface: #1c1c26;
+  --raised: #272735;
+  --ink: #f0eff6;
+  --muted: #aaa9ba;
+  --line: #363646;
+  --control-line: #747487;
+  --accent: #c1b4fa;
+  --accent-fill: #bbaaf8;
+  --accent-ink: #221936;
+  --sidebar: #1a1923;
+  --good: #74d9b0;
+  --good-soft: #203731;
+  --bad: #ffadb5;
+  --bad-soft: #3c2934;
+  --warn: #f0c589;
+  --warn-soft: #3b3127;
+  --chart-muted: #79788f;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --canvas: #f5f4f8;
+  --surface: #fff;
+  --raised: #efedf5;
+  --ink: #242136;
+  --muted: #605d72;
+  --line: #dddae6;
+  --control-line: #898499;
+  --accent: #5d3bb0;
+  --accent-fill: #5834a9;
+  --accent-ink: #fff;
+  --sidebar: #eeecf5;
+  --good: #126047;
+  --good-soft: #e3f4ec;
+  --bad: #9c2e43;
+  --bad-soft: #fbe8eb;
+  --warn: #794b15;
+  --warn-soft: #f8efdf;
+  --chart-muted: #827e93;
 }
 
 @layer base {
-  body {
-    @apply bg-canvas text-ink antialiased;
-  }
-
-  :focus-visible {
-    @apply outline-2 outline-offset-4 outline-blue-500;
-  }
+  body { @apply bg-canvas text-ink antialiased; }
+  :focus-visible { @apply outline-2 outline-offset-4 outline-accent; }
+  ::selection { @apply bg-accent-fill text-accent-ink; }
+  h1, h2, h3 { text-wrap: balance; scroll-margin-top: 1rem; }
+  a, button, select, summary { touch-action: manipulation; }
+  button:enabled, select { cursor: pointer; }
+  input::placeholder { @apply text-muted; }
 }
 
 @layer components {
-  .panel {
-    @apply min-w-0 rounded-xl border border-line bg-white;
+  .panel { @apply min-w-0 rounded-xl border border-line bg-surface; }
+  .panel-heading { @apply flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-line px-5 py-3; }
+  .action-link { @apply inline-flex min-h-8 items-center rounded-sm font-semibold text-accent underline-offset-4 hover:underline; }
+  .button-primary, .button-secondary, .button-danger {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-transparent px-3.5 py-2 text-sm font-semibold motion-safe:transition-colors disabled:cursor-wait disabled:opacity-60;
   }
+  .button-primary { @apply bg-accent-fill text-accent-ink enabled:hover:brightness-110; }
+  .button-secondary { @apply border-line bg-surface text-ink enabled:hover:bg-raised; }
+  .button-danger { @apply bg-bad-soft text-bad enabled:hover:bg-bad enabled:hover:text-canvas; }
+  .field { @apply min-h-11 w-full rounded-lg border bg-surface px-3 py-2 text-ink aria-invalid:border-bad; border-color: var(--control-line); }
+  .field[aria-invalid="true"] { border-color: var(--bad); }
+  .operation-list > li { content-visibility: auto; contain-intrinsic-size: auto 5rem; }
+  .dialog-surface { @apply bg-surface text-ink overscroll-contain backdrop:bg-black/60; }
+  .recharts-default-tooltip { @apply !rounded-lg !border-line !bg-surface !text-ink; }
+  .recharts-tooltip-item { @apply !text-ink; }
+}
 
-  .panel-heading {
-    @apply flex flex-wrap items-center justify-between gap-2 border-b border-line px-5 py-4;
-  }
-
-  .action-link {
-    @apply rounded-sm text-sm font-semibold text-accent hover:underline;
-  }
-
-  .button-primary,
-  .button-secondary,
-  .button-danger {
-    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-transparent px-3.5 py-2 text-sm font-semibold disabled:cursor-wait disabled:opacity-60;
-  }
-
-  .button-primary {
-    @apply bg-accent text-white enabled:hover:bg-blue-800;
-  }
-
-  .button-secondary {
-    @apply border-line bg-white text-ink enabled:hover:bg-slate-50;
-  }
-
-  .button-danger {
-    @apply bg-rose-700 text-white enabled:hover:bg-rose-800;
-  }
+@media (pointer: coarse) {
+  .action-link { min-height: 44px; }
 }

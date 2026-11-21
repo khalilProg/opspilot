@@ -94,6 +94,7 @@ for asset in $assets; do
 done
 check /monitors 200 html
 check /incidents 200 html
+check /settings 200 html
 check /assets/opspilot-missing.js 404 private
 check /api/monitors 200 collection
 check /api/incidents 200 collection
