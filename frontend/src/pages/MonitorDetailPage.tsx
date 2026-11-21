@@ -1,10 +1,14 @@
-import { Link, useParams } from 'react-router'
+import { Pencil } from 'lucide-react'
+import { useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { DeleteMonitorDialog, MonitorActionError, MonitorForm } from '../components/MonitorDialogs'
 import { monitorStatus, Status } from '../components/OperationLists'
 import { PageHeading } from '../components/PageHeading'
 import { QueryState } from '../components/QueryState'
+import { useToggleMonitor } from '../hooks/useMonitorManagement'
 import { useMonitor, useMonitorChecks } from '../hooks/useOperations'
-import type { MonitorCheck } from '../types/operations'
+import type { Monitor, MonitorCheck } from '../types/operations'
 
 const timestampFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' })
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit', second: '2-digit' })
@@ -85,6 +89,62 @@ function RecentChecks({ monitorId }: { monitorId: string }) {
   )
 }
 
+function MonitorConfiguration({ monitor }: { monitor: Monitor }) {
+  const navigate = useNavigate()
+  const toggle = useToggleMonitor(monitor.id)
+  const [dialog, setDialog] = useState<'edit' | 'delete' | null>(null)
+  const dismiss = () => setDialog(null)
+
+  return (
+    <section className="panel mb-5" aria-labelledby="configuration-heading">
+      <div className="panel-heading">
+        <h2 id="configuration-heading" className="font-semibold">Configuration</h2>
+        <button type="button" className="button-secondary" disabled={toggle.isPending} onClick={() => setDialog('edit')}>
+          <Pencil aria-hidden="true" size={15} />
+          Edit monitor
+        </button>
+      </div>
+      <dl className="grid grid-cols-2 gap-4 px-5 py-4 sm:grid-cols-3">
+        <div>
+          <dt className="text-sm font-medium text-muted">Check interval</dt>
+          <dd className="mt-1">{monitor.intervalSeconds} seconds</dd>
+        </div>
+        <div>
+          <dt className="text-sm font-medium text-muted">Timeout</dt>
+          <dd className="mt-1">{monitor.timeoutSeconds} seconds</dd>
+        </div>
+        <div>
+          <dt className="text-sm font-medium text-muted">Scheduled checks</dt>
+          <dd className="mt-1">{monitor.enabled ? 'Enabled' : 'Disabled'}</dd>
+        </div>
+      </dl>
+      {toggle.error && <div className="px-5 pb-4"><MonitorActionError error={toggle.error} /></div>}
+      <div className="flex flex-wrap gap-2 border-t border-line px-5 py-4">
+        <button
+          type="button"
+          className="button-secondary"
+          disabled={toggle.isPending}
+          onClick={() => toggle.mutate(!monitor.enabled)}
+        >
+          {toggle.isPending ? 'Updating…' : monitor.enabled ? 'Disable checks' : 'Enable checks'}
+        </button>
+        <button
+          type="button"
+          className="button-secondary ml-auto text-rose-800"
+          disabled={toggle.isPending}
+          onClick={() => setDialog('delete')}
+        >
+          Delete monitor
+        </button>
+      </div>
+      {dialog === 'edit' && <MonitorForm monitor={monitor} onDismiss={dismiss} onSaved={dismiss} />}
+      {dialog === 'delete' && (
+        <DeleteMonitorDialog monitor={monitor} onDismiss={dismiss} onDeleted={() => navigate('/monitors', { replace: true })} />
+      )}
+    </section>
+  )
+}
+
 export default function MonitorDetailPage() {
   const { monitorId } = useParams<{ monitorId: string }>()
   const monitor = useMonitor(monitorId!)
@@ -101,6 +161,7 @@ export default function MonitorDetailPage() {
               </div>
               <Status status={monitorStatus(data)} />
             </div>
+            <MonitorConfiguration key={data.id} monitor={data} />
             <RecentChecks monitorId={data.id} />
           </>
         )}

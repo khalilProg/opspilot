@@ -1,5 +1,7 @@
-import { Activity, CircleCheck, CircleHelp, CircleX, Pause, Search } from 'lucide-react'
+import { Activity, CircleCheck, CircleHelp, CircleX, Pause, Plus, Search } from 'lucide-react'
 import { useState } from 'react'
+import { useNavigate } from 'react-router'
+import { MonitorForm } from '../components/MonitorDialogs'
 import { MonitorList, monitorStatus } from '../components/OperationLists'
 import { PageHeading } from '../components/PageHeading'
 import { QueryState } from '../components/QueryState'
@@ -41,13 +43,22 @@ function MonitorCounts({ monitors }: { monitors: Monitor[] | undefined }) {
 
 export function MonitorsPage() {
   const monitors = useMonitors()
+  const navigate = useNavigate()
+  const [creating, setCreating] = useState(false)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const normalizedSearch = search.trim().toLowerCase()
 
   return (
     <>
-      <PageHeading title="Monitors" description="Check the current status of configured endpoints." />
+      <div className="flex flex-wrap items-start justify-between gap-x-4">
+        <PageHeading title="Monitors" description="Check the current status of configured endpoints." />
+        <button type="button" className="button-primary mb-5" onClick={() => setCreating(true)}>
+          <Plus aria-hidden="true" size={17} />
+          New monitor
+        </button>
+      </div>
+      {creating && <MonitorForm onDismiss={() => setCreating(false)} onSaved={(monitor) => navigate(`/monitors/${monitor.id}`)} />}
       <MonitorCounts monitors={monitors.data} />
       <section aria-label="Monitor list" className="panel">
         <div className="panel-heading justify-start sm:gap-4">

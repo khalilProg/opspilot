@@ -1,8 +1,13 @@
 package dev.opspilot.monitor;
 
+import java.net.URISyntaxException;
+import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -11,7 +16,9 @@ import jakarta.validation.constraints.Size;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -84,8 +91,31 @@ class MonitorController {
         try {
             targets.resolve(url);
         } catch (IllegalArgumentException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
+            String message = ex.getCause() instanceof URISyntaxException
+                    ? "Enter a valid absolute HTTP(S) URL."
+                    : ex.getMessage();
+            throw new InvalidTargetException(message);
         }
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    ValidationFailure invalidFields(MethodArgumentNotValidException ex, HttpServletRequest request) {
+        var fields = new LinkedHashMap<String, String>();
+        ex.getBindingResult().getFieldErrors()
+                .forEach(error -> fields.putIfAbsent(error.getField(), error.getDefaultMessage()));
+        return validationFailure(request, fields);
+    }
+
+    @ExceptionHandler(InvalidTargetException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    ValidationFailure invalidTarget(InvalidTargetException ex, HttpServletRequest request) {
+        return validationFailure(request, Map.of("url", ex.getMessage()));
+    }
+
+    private static ValidationFailure validationFailure(HttpServletRequest request, Map<String, String> fields) {
+        return new ValidationFailure(Instant.now(), 400, "Bad Request",
+                "Check the highlighted fields.", request.getRequestURI(), fields);
     }
 
     private static ResponseStatusException notFound() {
@@ -93,13 +123,27 @@ class MonitorController {
     }
 
     record Configuration(
-            @NotBlank @Size(max = 100) String name,
-            @NotBlank @Size(max = 2048) String url,
-            @NotNull @Positive Integer intervalSeconds,
-            @NotNull @Positive Integer timeoutSeconds,
-            @NotNull Boolean enabled) {
+            @NotBlank(message = "Enter a monitor name.")
+            @Size(max = 100, message = "Use 100 characters or fewer.") String name,
+            @NotBlank(message = "Enter a monitor URL.")
+            @Size(max = 2048, message = "Use 2048 characters or fewer.") String url,
+            @NotNull(message = "Enter a check interval.")
+            @Positive(message = "Enter a check interval greater than zero.") Integer intervalSeconds,
+            @NotNull(message = "Enter a timeout.")
+            @Positive(message = "Enter a timeout greater than zero.") Integer timeoutSeconds,
+            @NotNull(message = "Choose whether to enable checks.") Boolean enabled) {
     }
 
     record EnabledUpdate(@NotNull Boolean enabled) {
+    }
+
+    record ValidationFailure(Instant timestamp, int status, String error, String message, String path,
+            Map<String, String> fieldErrors) {
+    }
+
+    private static final class InvalidTargetException extends RuntimeException {
+        InvalidTargetException(String message) {
+            super(message);
+        }
     }
 }

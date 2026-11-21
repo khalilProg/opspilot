@@ -32,4 +32,22 @@
   .action-link {
     @apply rounded-sm text-sm font-semibold text-accent hover:underline;
   }
+
+  .button-primary,
+  .button-secondary,
+  .button-danger {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-transparent px-3.5 py-2 text-sm font-semibold disabled:cursor-wait disabled:opacity-60;
+  }
+
+  .button-primary {
+    @apply bg-accent text-white enabled:hover:bg-blue-800;
+  }
+
+  .button-secondary {
+    @apply border-line bg-white text-ink enabled:hover:bg-slate-50;
+  }
+
+  .button-danger {
+    @apply bg-rose-700 text-white enabled:hover:bg-rose-800;
+  }
 }

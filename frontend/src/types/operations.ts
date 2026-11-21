@@ -1,13 +1,16 @@
 export type MonitorStatus = 'UNKNOWN' | 'UP' | 'DOWN'
 
-export interface Monitor {
-  id: string
+export interface MonitorConfiguration {
   name: string
   url: string
   enabled: boolean
-  status: MonitorStatus
   intervalSeconds: number
   timeoutSeconds: number
+}
+
+export interface Monitor extends MonitorConfiguration {
+  id: string
+  status: MonitorStatus
   consecutiveFailures: number
   createdAt: string
   updatedAt: string
