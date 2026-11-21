@@ -38,10 +38,19 @@ body = Path(directory, "body").read_bytes()
 request_id = headers.get("X-Request-ID", "")
 if not re.fullmatch("[0-9a-f]{32}", request_id):
     sys.exit(f"FAIL {path}: missing or invalid X-Request-ID")
+if (headers.get("X-Content-Type-Options") != "nosniff"
+        or headers.get("X-Frame-Options") != "DENY"
+        or headers.get("Referrer-Policy") != "no-referrer"
+        or "frame-ancestors 'none'" not in headers.get("Content-Security-Policy", "")):
+    sys.exit(f"FAIL {path}: missing gateway security headers")
 
 content_type = headers.get_content_type()
+cache = headers.get("Cache-Control", "")
 if response == "html":
-    valid = content_type == "text/html" and b"<title>OpsPilot</title>" in body
+    valid = content_type == "text/html" and b"<title>OpsPilot</title>" in body and "no-cache" in cache
+elif response == "static":
+    expected = {"text/css"} if path.endswith(".css") else {"application/javascript", "text/javascript"}
+    valid = content_type in expected and "max-age=31536000" in cache and "immutable" in cache and bool(body)
 elif response == "private":
     valid = True
 else:
@@ -67,8 +76,25 @@ PY
 printf 'Checking the OpsPilot gateway at %s\n' "$base_url"
 check /healthz 200 health --retry 10 --retry-delay 1 --retry-connrefused --retry-max-time 30
 check / 200 html
+assets=$(python3 - "$workdir/body" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+html = Path(sys.argv[1]).read_text()
+for extension in ("js", "css"):
+    match = re.search(r'(?:src|href)="(/assets/[-\w]+\.' + extension + r')"', html)
+    if not match:
+        sys.exit(f"FAIL /: missing the built {extension} asset")
+    print(match[1])
+PY
+)
+for asset in $assets; do
+  check "$asset" 200 static
+done
 check /monitors 200 html
 check /incidents 200 html
+check /assets/opspilot-missing.js 404 private
 check /api/monitors 200 collection
 check /api/incidents 200 collection
 check /api/monitors 400 spring-error --header 'Content-Type: application/json' --data '{}'

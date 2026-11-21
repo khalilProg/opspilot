@@ -15,6 +15,24 @@ OpsPilot is a portfolio-focused, polyglot incident-management platform. Mileston
 
 The Java services run Flyway migrations against their respective databases at startup.
 
+```mermaid
+flowchart LR
+    Browser -->|"localhost:3000"| Gateway["Nginx gateway"]
+    Gateway -->|"HTML and versioned assets"| Dashboard["React build"]
+    Gateway -->|"/api/monitors"| Monitor["Monitor service"]
+    Gateway -->|"/api/incidents"| Incident["Incident service"]
+    Monitor --> MonitorDB[("monitor_db")]
+    Incident --> IncidentDB[("incident_db")]
+    Monitor --> Broker["RabbitMQ"]
+    Broker --> Incident
+    Incident --> Broker
+    Broker --> Worker["Notification worker"]
+```
+
+Nginx serves the dashboard and its deep links from the Vite build in the multi-stage image. The two API route families preserve their backend paths and response statuses. The dashboard and APIs share a browser origin, so requests use relative URLs. The gateway health probe is `/healthz`. Service health and Actuator routes stay internal.
+
+HTML uses `Cache-Control: no-cache` so clients revalidate it promptly. Vite's content-hashed assets are immutable for one year. Security headers apply to both successful and failed responses. If Nginx cannot connect to an API or the upstream times out, it returns JSON with HTTP `502` or `504` and a request ID.
+
 ## Prerequisites
 
 - Docker Engine with BuildKit and Docker Compose 2.17 or newer
@@ -157,6 +175,25 @@ To return the Monitor service to the default policy after testing, run `docker c
 
 The durable `opspilot.events` topic exchange routes events to two independent consumer queues.
 
+```mermaid
+sequenceDiagram
+    participant M as Monitor service
+    participant Q as RabbitMQ
+    participant I as Incident service
+    participant N as Notification worker
+    participant B as Browser via Nginx
+    M->>Q: monitor.down
+    Q->>I: Open incident
+    I->>Q: incident.opened
+    Q->>N: Deliver notification
+    B->>I: Acknowledge incident
+    M->>Q: monitor.recovered
+    Q->>I: Resolve incident
+    I->>Q: incident.resolved
+    Q->>N: Deliver notification
+    B->>I: Poll incident and transitions
+```
+
 | Publisher | Routing keys | Queue | Consumer |
 |---|---|---|---|
 | Monitor | `monitor.down`, `monitor.recovered` | `incident.monitor-events` (`monitor.*`) | Incident |
@@ -232,21 +269,26 @@ To return to the default JSON log sink, remove any `NOTIFICATION_WEBHOOK_URL` se
 
 ## Phase 6 release acceptance
 
-Run the full release check from the project root on the local development stack.
+Run the full release check from the project root. Install the Playwright dependencies and Chromium once before running it.
 
 ```bash
-python3 scripts/test-release-acceptance.py --sudo-docker
+npm ci --prefix tests/e2e
+npm exec --prefix tests/e2e -- playwright install chromium
+
+docker compose -f compose.yml -f compose.monitor-dev.yml -f compose.notification-dev.yml \
+  up -d --build --wait
+python3 scripts/test-release-acceptance.py --skip-stack-build
 ```
 
-The runner rebuilds the application images, starts both test fixtures, and runs the Java and Go suites, gateway smoke test, and end-to-end scripts. The controlled outage stays active until the test verifies one open incident and its notification. The test then verifies the exact failure and recovery thresholds and compares persisted data before and after restarting all three application containers.
+Run the script as your normal user with access to Node and Playwright. Add `--sudo-docker` if Docker requires sudo. The runner checks that Playwright can load the suite before touching Compose. Omit `--skip-stack-build` to let it build and start the development stack. The runner checks the gateway and its static assets, builds the frontend and runs Vitest in Compose, runs the Java and Go unit suites, and runs the API integration and Playwright suites. To run only the frontend unit tests locally, use `npm ci --prefix frontend` and `npm test --prefix frontend`.
 
-The reliability checks briefly stop RabbitMQ, and the notification test restarts its consumer. The runner uses existing Compose volumes and leaves the development fixtures and test records available for inspection. A successful run prints `Phase 6 release acceptance passed (9/9).`
+The gateway recovery check briefly stops and replaces the Monitor container. It verifies a JSON `502` or `504` during the outage and API recovery without restarting Nginx. The event tests also exercise RabbitMQ outage and replay, notification retries, and state persistence across restarts. Use the development stack for these checks. The runner uses existing Compose volumes and leaves the test incident and notification records available for inspection. A successful run prints `Phase 6 release acceptance passed (12/12).`
 
 ## Design notes
 
 - The database container is not published to the host. Services use Docker DNS (`postgres:5432`) and connect using least-privilege per-service users.
 - `.env` is ignored by Git. `.env.example` contains local-development values only; use managed secrets in deployment environments.
-- Container images run the app with non-root users.
+- The Java and Go application containers run as non-root users.
 - The gateway alone publishes a host port, bound to `127.0.0.1:3000`. Its Docker network is shared with the two Spring services. PostgreSQL, RabbitMQ, and the Go worker are on the backend network.
 - Docker Compose waits for database and broker health checks before starting the Java/Go services, but applications should still handle transient dependency failure.
 - For production, avoid exposing Actuator details, use TLS, secret rotation, database migrations, durable messaging settings, and immutable image references.

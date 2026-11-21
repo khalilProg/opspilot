@@ -109,6 +109,12 @@ services:
       timeout: 5s
       retries: 5
     networks: [backend]
+  frontend-test:
+    profiles: [test]
+    build:
+      context: ./frontend
+      target: build
+    command: ["npm", "test"]
   monitor-service-test:
     profiles: [test]
     image: maven:3.9-eclipse-temurin-21
