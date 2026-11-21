@@ -191,6 +191,22 @@ To verify failure and replay behavior, run `python3 scripts/test-event-reliabili
 
 The Incident service opens an incident from a `monitor.down` event and resolves the active incident from `monitor.recovered`. Acknowledgement can be repeated without adding another transition. Acknowledging a resolved incident returns `409 Conflict`, and unknown incident IDs return `404 Not Found`. Flyway backfills opening and resolution history for Phase 3 records. Incident state, history, and consumed event IDs live in `incident_db`. The Incident service reads monitor details from event payloads.
 
+The Incident API reports monitor outages as `HIGH` severity throughout the lifecycle. The dashboard groups active and resolved incidents and refreshes the incident status and history every five seconds while the page is visible.
+
+### Incident management acceptance
+
+With the Playwright prerequisites from Monitoring dashboard acceptance installed, rebuild with the monitor fixture and run:
+
+```bash
+docker compose -f compose.yml -f compose.monitor-dev.yml \
+  up -d --build --wait gateway incident-service monitor-fixture notification-service
+./scripts/test-incident-management.sh
+```
+
+The browser test creates an outage on a temporary monitor, acknowledges the incident from its detail page, and watches the same page update after recovery. It checks the timestamps, transition order, and move to the resolved list. The test deletes the temporary monitor and leaves the incident and any notifications in the development stack.
+
+### API lifecycle test
+
 Rebuild and run the lifecycle test from the project root. The script publishes synthetic monitor events through the existing outbox and keeps the resulting incidents and history available for inspection.
 
 ```bash

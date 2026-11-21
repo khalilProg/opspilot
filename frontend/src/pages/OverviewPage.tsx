@@ -61,7 +61,7 @@ export function OverviewPage() {
             <Link to="/incidents" className="action-link">View incidents</Link>
           </div>
           <QueryState query={incidents} subject="incidents" emptyMessage="No incidents recorded yet.">
-            {(data) => <IncidentList incidents={data.slice(0, 5)} />}
+            {(data) => <IncidentList incidents={data.slice(0, 5)} monitors={monitors.data} />}
           </QueryState>
         </section>
       </div>

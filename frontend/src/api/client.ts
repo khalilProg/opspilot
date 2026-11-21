@@ -1,4 +1,4 @@
-import type { Incident, Monitor, MonitorCheck, MonitorConfiguration } from '../types/operations'
+import type { Incident, IncidentTransition, Monitor, MonitorCheck, MonitorConfiguration } from '../types/operations'
 
 interface Collections {
   monitors: Monitor
@@ -56,12 +56,12 @@ function monitorPath(id: string) {
   return `monitors/${encodeURIComponent(id)}`
 }
 
-function isMonitor(data: unknown) {
+function hasId(data: unknown) {
   return typeof data === 'object' && data !== null && 'id' in data && typeof data.id === 'string'
 }
 
 export async function getMonitor(id: string, signal?: AbortSignal) {
-  return readJson<Monitor>(await request(monitorPath(id), { signal }), isMonitor)
+  return readJson<Monitor>(await request(monitorPath(id), { signal }), hasId)
 }
 
 export async function getMonitorChecks(id: string, signal?: AbortSignal) {
@@ -73,7 +73,7 @@ async function writeMonitor(path: string, method: string, data: MonitorConfigura
     method,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
-  }), isMonitor)
+  }), hasId)
 }
 
 export function createMonitor(configuration: MonitorConfiguration) {
@@ -90,4 +90,20 @@ export function setMonitorEnabled(id: string, enabled: boolean) {
 
 export async function deleteMonitor(id: string) {
   await request(monitorPath(id), { method: 'DELETE' })
+}
+
+function incidentPath(id: string) {
+  return `incidents/${encodeURIComponent(id)}`
+}
+
+export async function getIncident(id: string, signal?: AbortSignal) {
+  return readJson<Incident>(await request(incidentPath(id), { signal }), hasId)
+}
+
+export async function getIncidentTransitions(id: string, signal?: AbortSignal) {
+  return readJson<IncidentTransition[]>(await request(`${incidentPath(id)}/transitions`, { signal }), Array.isArray)
+}
+
+export async function acknowledgeIncident(id: string) {
+  return readJson<Incident>(await request(`${incidentPath(id)}/acknowledge`, { method: 'POST' }), hasId)
 }

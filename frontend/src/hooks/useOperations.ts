@@ -1,7 +1,8 @@
-import { useQuery } from '@tanstack/react-query'
-import { getCollection, getMonitor, getMonitorChecks } from '../api/client'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { acknowledgeIncident, getCollection, getIncident, getIncidentTransitions, getMonitor, getMonitorChecks } from '../api/client'
 
 const monitorRefreshInterval = 5_000
+const incidentRefresh = { staleTime: 5_000, refetchInterval: 5_000 }
 
 export function useMonitors() {
   return useQuery({
@@ -34,5 +35,30 @@ export function useIncidents() {
   return useQuery({
     queryKey: ['incidents'],
     queryFn: ({ signal }) => getCollection('incidents', signal),
+    ...incidentRefresh,
+  })
+}
+
+export function useIncident(id: string) {
+  return useQuery({
+    queryKey: ['incidents', id],
+    queryFn: ({ signal }) => getIncident(id, signal),
+    ...incidentRefresh,
+  })
+}
+
+export function useIncidentTransitions(id: string) {
+  return useQuery({
+    queryKey: ['incidents', id, 'transitions'],
+    queryFn: ({ signal }) => getIncidentTransitions(id, signal),
+    ...incidentRefresh,
+  })
+}
+
+export function useAcknowledgeIncident(id: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => acknowledgeIncident(id),
+    onSettled: () => client.invalidateQueries({ queryKey: ['incidents'] }),
   })
 }

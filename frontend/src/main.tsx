@@ -3,6 +3,7 @@ import { lazy, StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Route, Routes } from 'react-router'
 import { DashboardLayout } from './layouts/DashboardLayout'
+import { IncidentDetailPage } from './pages/IncidentDetailPage'
 import { IncidentsPage } from './pages/IncidentsPage'
 import { MonitorsPage } from './pages/MonitorsPage'
 import { NotFoundPage } from './pages/NotFoundPage'
@@ -31,6 +32,7 @@ createRoot(document.getElementById('root')!).render(
               </Suspense>
             } />
             <Route path="incidents" element={<IncidentsPage />} />
+            <Route path="incidents/:incidentId" element={<IncidentDetailPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Routes>

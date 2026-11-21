@@ -24,12 +24,21 @@ export interface MonitorCheck {
   error: string | null
 }
 
+export type IncidentStatus = 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED'
+
 export interface Incident {
   id: string
   monitorId: string
-  status: 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED'
+  status: IncidentStatus
+  severity: 'HIGH'
   reason: string
   openedAt: string
   acknowledgedAt: string | null
   resolvedAt: string | null
+}
+
+export interface IncidentTransition {
+  fromStatus: IncidentStatus | null
+  toStatus: IncidentStatus
+  occurredAt: string
 }
