@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Geist", "Segoe UI", system-ui, sans-serif;
+  --color-canvas: #f3f5f9;
+  --color-ink: #17243b;
+  --color-muted: #52617a;
+  --color-line: #dfe6f0;
+  --color-accent: #2851bd;
+  --color-sidebar: #111e34;
+}
+
+@layer base {
+  body {
+    @apply bg-canvas text-ink antialiased;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-4 outline-blue-500;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply min-w-0 rounded-xl border border-line bg-white;
+  }
+
+  .panel-heading {
+    @apply flex flex-wrap items-center justify-between gap-2 border-b border-line px-5 py-4;
+  }
+
+  .action-link {
+    @apply rounded-sm text-sm font-semibold text-accent hover:underline;
+  }
+}

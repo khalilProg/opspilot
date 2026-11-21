@@ -6,7 +6,7 @@ OpsPilot is a portfolio-focused, polyglot incident-management platform. Mileston
 
 | Service | Language | Local URL | Responsibility |
 |---|---|---|---|
-| gateway | Nginx | http://localhost:3000 | Serves the OpsPilot landing page and proxies the APIs |
+| gateway | Nginx | http://localhost:3000 | Serves the React dashboard and proxies the APIs |
 | monitor-service | Java / Spring Boot | http://localhost:3000/api/monitors | Monitor CRUD API |
 | incident-service | Java / Spring Boot | http://localhost:3000/api/incidents | Opens and resolves incidents from monitor events |
 | notification-service | Go | internal only | Records incident notifications |
@@ -30,11 +30,25 @@ docker compose ps
 ./scripts/smoke-test.sh
 ```
 
-Open http://localhost:3000. The gateway serves a static landing page at `/` for the first step of the dashboard rollout. It preserves upstream HTTP status codes and logs each response's `X-Request-ID`. The local gateway health endpoint at `/healthz` reports whether Nginx is responding. Compose checks the health of the Spring services, PostgreSQL, RabbitMQ, and the notification worker separately.
+Open http://localhost:3000 for the dashboard. Overview pulls from both APIs, and the Monitors and Incidents pages show their respective collections. The gateway preserves upstream HTTP status codes and logs each response's `X-Request-ID`. The local gateway health endpoint at `/healthz` reports whether Nginx is responding. Compose checks the health of the Spring services, PostgreSQL, RabbitMQ, and the notification worker separately.
 
 Check logs with `docker compose logs -f gateway monitor-service incident-service notification-service`. Stop without deleting data using `docker compose down`.
 
 **Be careful:** `docker compose down -v` removes PostgreSQL and RabbitMQ volumes, including all local data. Run it only when you explicitly want a clean slate.
+
+## Frontend development
+
+With the Compose gateway running and Node.js 24 installed, start the Vite development server from the repository root.
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Open http://127.0.0.1:5173. Vite reloads UI changes and proxies relative `/api` requests through the gateway at `http://127.0.0.1:3000`. Set `OPSPILOT_GATEWAY_URL` before starting Vite if you run the gateway at a different address.
+
+Run `npm run build` from `frontend/` to type-check and produce the dashboard in `dist/`. The gateway image builds and serves that output. Rebuild the gateway to serve UI changes at http://localhost:3000.
 
 ## Monitor API
 
@@ -69,7 +83,7 @@ docker compose run --rm --no-deps incident-service-test
 docker compose run --rm --no-deps notification-service-test
 ```
 
-The Java tests check each service's identity controller directly. The Go tests exercise both HTTP handlers using the standard library. The smoke test checks the landing page, both API collections, upstream `400` and `404` responses, request IDs, and the boundaries of gateway routing. It does not create any records. Set `GATEWAY_BASE_URL` to test a gateway at a different address.
+The Java tests check each service's identity controller directly. The Go tests exercise both HTTP handlers using the standard library. The smoke test checks the dashboard entry routes, both API collections, upstream `400` and `404` responses, request IDs, and the boundaries of gateway routing. It does not create any records. Set `GATEWAY_BASE_URL` to test a gateway at a different address.
 
 With the Monitor service running, use Python 3 to test all six CRUD endpoints, validation errors, and missing IDs.
 

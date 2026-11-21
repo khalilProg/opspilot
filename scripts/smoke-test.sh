@@ -67,6 +67,8 @@ PY
 printf 'Checking the OpsPilot gateway at %s\n' "$base_url"
 check /healthz 200 health --retry 10 --retry-delay 1 --retry-connrefused --retry-max-time 30
 check / 200 html
+check /monitors 200 html
+check /incidents 200 html
 check /api/monitors 200 collection
 check /api/incidents 200 collection
 check /api/monitors 400 spring-error --header 'Content-Type: application/json' --data '{}'

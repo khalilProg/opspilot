@@ -5,3 +5,5 @@ target/
 bin/
 *.log
 .DS_Store
+/frontend/node_modules/
+/frontend/dist/
