@@ -22,7 +22,7 @@ jobs:
       - name: Start a loopback-only candidate registry
         run: |
           docker run --detach --rm --name opspilot-candidates --publish 127.0.0.1:5000:5000 \
-            registry:3@sha256:82f6ff4a7f982960c8aa51617fea3aabc485df6e55cce80d22deb1de36f1bc3c19
+            registry:3@sha256:82f6ff4a7f982960c8aa51617fea3aabc485df6e55cce80d22deb1de36f1bc3c
           curl --fail --silent --show-error --retry 10 --retry-connrefused http://localhost:5000/v2/
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
