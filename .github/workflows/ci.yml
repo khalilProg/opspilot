@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  java:
+    name: Java tests (${{ matrix.service }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [monitor-service, incident-service]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: services/${{ matrix.service }}/pom.xml
+      - run: mvn --batch-mode --no-transfer-progress test
+        working-directory: services/${{ matrix.service }}
+
+  go:
+    name: Go tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: services/notification-service/go.mod
+          cache-dependency-path: services/notification-service/go.sum
+      - run: go test -count=1 ./...
+        working-directory: services/notification-service
+
+  frontend:
+    name: Frontend tests and build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  compose:
+    name: Compose configuration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate the base stack, test profile and development overrides
+        run: |
+          docker compose --env-file .env.example --profile test config --quiet
+          docker compose --env-file .env.example -f compose.yml -f compose.monitor-dev.yml config --quiet
+          docker compose --env-file .env.example -f compose.yml -f compose.notification-dev.yml config --quiet
+          docker compose --env-file .env.example -f compose.yml -f compose.monitor-dev.yml -f compose.notification-dev.yml config --quiet
+
+  integration:
+    name: PostgreSQL and RabbitMQ integration
+    needs: [java, go, frontend, compose]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      COMPOSE_PROJECT_NAME: opspilot-ci
+      COMPOSE_FILE: compose.yml:compose.monitor-dev.yml:compose.notification-dev.yml
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build all four application images and start the stack
+        run: |
+          cp .env.example .env
+          docker compose up --build --detach --wait --wait-timeout 180
+      - name: Verify the gateway and monitor API
+        run: |
+          sh scripts/smoke-test.sh
+          MONITOR_TEST_TARGET_ORIGIN=http://monitor-fixture:8090 python3 scripts/test-monitor-api.py
+      - name: Verify event processing, persistence and delivery
+        run: |
+          python3 scripts/test-event-pipeline.py --acceptance
+          python3 scripts/test-incident-lifecycle.py
+          python3 scripts/test-event-reliability.py
+          python3 scripts/test-notification-delivery.py
+      - name: Show service logs on failure
+        if: ${{ failure() }}
+        run: docker compose logs --no-color --tail 150
+      - name: Remove the integration stack and its test volumes
+        if: ${{ always() }}
+        run: docker compose down --volumes --remove-orphans
+
+  gate:
+    name: CI Gate
+    if: ${{ always() }}
+    needs: [java, go, frontend, compose, integration]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every upstream job to succeed
+        env:
+          JOB_RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $JOB_RESULTS; do
+            if [[ "$result" != success ]]; then
+              echo "::error::At least one required CI job did not succeed. Job results: $JOB_RESULTS"
+              exit 1
+            fi
+          done
