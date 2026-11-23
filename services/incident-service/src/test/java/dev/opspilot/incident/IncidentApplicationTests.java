@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.UUID;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.json.JsonMapper;
 
 class IncidentApplicationTests {
     @Test
@@ -15,7 +15,7 @@ class IncidentApplicationTests {
 
     @Test
     void monitorOutageSeverityIsIndependentOfLifecycleStatus() {
-        var mapper = new ObjectMapper();
+        var mapper = new JsonMapper();
         for (String status : new String[] {"OPEN", "ACKNOWLEDGED", "RESOLVED"}) {
             var incident = new Incident(UUID.randomUUID(), UUID.randomUUID(), status, "HTTP 503",
                     null, null, null);
