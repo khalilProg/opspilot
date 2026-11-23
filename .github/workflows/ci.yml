@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || 'latest' }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 jobs:
   java:
@@ -84,6 +84,8 @@ jobs:
           docker compose --env-file .env.example -f compose.yml -f compose.monitor-dev.yml config --quiet
           docker compose --env-file .env.example -f compose.yml -f compose.notification-dev.yml config --quiet
           docker compose --env-file .env.example -f compose.yml -f compose.monitor-dev.yml -f compose.notification-dev.yml config --quiet
+      - name: Validate the container publishing build definition
+        run: docker buildx bake --file docker-bake.hcl --print
 
   integration:
     name: PostgreSQL and RabbitMQ integration
@@ -135,3 +137,12 @@ jobs:
               exit 1
             fi
           done
+
+  publish:
+    name: Publish containers
+    needs: gate
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/publish.yml

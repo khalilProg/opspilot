@@ -1,0 +1,75 @@
+name: Publish containers
+
+on:
+  workflow_call:
+
+jobs:
+  publish:
+    name: Build and publish four images
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE_TAG: sha-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set the registry namespace
+        run: echo "IMAGE_NAMESPACE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+      - name: Build and push commit images
+        id: build
+        uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e # v7.5.0
+        with:
+          source: .
+          files: docker-bake.hcl
+          push: true
+        env:
+          IMAGE_SOURCE: ${{ github.server_url }}/${{ github.repository }}
+          IMAGE_REVISION: ${{ github.sha }}
+          USE_GHA_CACHE: 'true'
+      - name: Record and verify published digests
+        env:
+          BUILD_METADATA: ${{ steps.build.outputs.metadata }}
+        run: |
+          jq -e --arg commit "$GITHUB_SHA" --arg ns "$IMAGE_NAMESPACE" --arg tag "$IMAGE_TAG" '
+            if keys != ["frontend", "incident", "monitor", "notification"] then
+              error("Expected metadata for all four images")
+            else
+              {commit: $commit, tag: $tag, images: [to_entries[] | {
+                component: .key,
+                image: ($ns + "/opspilot-" + .key),
+                digest: .value["containerimage.digest"]
+              } | if (.digest // "" | test("^sha256:[0-9a-f]{64}$")) then
+                . + {reference: (.image + "@" + .digest)}
+              else error("Missing or invalid digest for " + .component) end]}
+            end
+          ' <<< "$BUILD_METADATA" > image-manifest.json
+
+          while IFS=$'\t' read -r image digest; do
+            actual=$(docker buildx imagetools inspect --format '{{ .Manifest.Digest }}' "$image:$IMAGE_TAG")
+            if [[ "$actual" != "$digest" ]]; then
+              echo "::error::The registry digest for $image:$IMAGE_TAG differs from the build digest"
+              exit 1
+            fi
+          done < <(jq -r '.images[] | [.image, .digest] | @tsv' image-manifest.json)
+
+          {
+            printf '### Published images for `%s`\n\n' "$IMAGE_TAG"
+            jq -r '.images[].reference | "- `\(.)`"' image-manifest.json
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image-manifest
+          path: image-manifest.json
+          if-no-files-found: error
+          overwrite: true
