@@ -1,5 +1,5 @@
 module github.com/khalilProg/opspilot/notification-service
 
-go 1.24
+go 1.27.4
 
-require github.com/rabbitmq/amqp091-go v1.10.0
+require github.com/rabbitmq/amqp091-go v1.13.0

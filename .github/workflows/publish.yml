@@ -14,30 +14,39 @@ jobs:
       packages: write
     env:
       IMAGE_TAG: sha-${{ github.sha }}
+      CANDIDATE_REGISTRY: localhost:5000
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Start a loopback-only candidate registry
+        run: |
+          docker run --detach --rm --name opspilot-candidates --publish 127.0.0.1:5000:5000 \
+            registry:3@sha256:82f6ff4a7f982960c8aa51617fea3aabc485df6e55cce80d22deb1de36f1bc3c19
+          curl --fail --silent --show-error --retry 10 --retry-connrefused http://localhost:5000/v2/
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          driver-opts: network=host
+          buildkitd-config-inline: |
+            [registry."localhost:5000"]
+              http = true
       - name: Set the registry namespace
         run: echo "IMAGE_NAMESPACE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
-      - name: Build and push commit images
+      - name: Build candidates with SBOM and provenance attestations
         id: build
         uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e # v7.5.0
         with:
           source: .
           files: docker-bake.hcl
           push: true
+          provenance: mode=max
+          sbom: true
         env:
+          IMAGE_NAMESPACE: ${{ env.CANDIDATE_REGISTRY }}
           IMAGE_SOURCE: ${{ github.server_url }}/${{ github.repository }}
           IMAGE_REVISION: ${{ github.sha }}
           USE_GHA_CACHE: 'true'
-      - name: Record and verify published digests
+      - name: Record candidate digests
         env:
           BUILD_METADATA: ${{ steps.build.outputs.metadata }}
         run: |
@@ -45,7 +54,7 @@ jobs:
             if keys != ["frontend", "incident", "monitor", "notification"] then
               error("Expected metadata for all four images")
             else
-              {commit: $commit, tag: $tag, images: [to_entries[] | {
+              {commit: $commit, tag: $tag, security_policy: "trivy-v1", images: [to_entries[] | {
                 component: .key,
                 image: ($ns + "/opspilot-" + .key),
                 digest: .value["containerimage.digest"]
@@ -54,14 +63,37 @@ jobs:
               else error("Missing or invalid digest for " + .component) end]}
             end
           ' <<< "$BUILD_METADATA" > image-manifest.json
-
-          while IFS=$'\t' read -r image digest; do
+      - name: Scan the exact candidate images before publishing
+        run: |
+          bash scripts/install-security-tools.sh "$RUNNER_TEMP/security-tools" trivy regctl
+          echo "$RUNNER_TEMP/security-tools" >> "$GITHUB_PATH"
+          export PATH="$RUNNER_TEMP/security-tools:$PATH"
+          mapfile -t candidates < <(jq -r --arg registry "$CANDIDATE_REGISTRY" '
+            .images[] | "\(.component)=\($registry)/opspilot-\(.component)@\(.digest)"
+          ' image-manifest.json)
+          bash scripts/scan-images.sh remote "$RUNNER_TEMP/candidate-security" "${candidates[@]}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: published-image-security
+          path: ${{ runner.temp }}/candidate-security/
+          overwrite: true
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Copy scanned images to GHCR and verify their digests
+        run: |
+          regctl registry set "$CANDIDATE_REGISTRY" --tls disabled
+          while IFS=$'\t' read -r component image digest; do
+            regctl image copy "$CANDIDATE_REGISTRY/opspilot-$component@$digest" "$image:$IMAGE_TAG"
             actual=$(docker buildx imagetools inspect --format '{{ .Manifest.Digest }}' "$image:$IMAGE_TAG")
             if [[ "$actual" != "$digest" ]]; then
               echo "::error::The registry digest for $image:$IMAGE_TAG differs from the build digest"
               exit 1
             fi
-          done < <(jq -r '.images[] | [.image, .digest] | @tsv' image-manifest.json)
+          done < <(jq -r '.images[] | [.component, .image, .digest] | @tsv' image-manifest.json)
 
           {
             printf '### Published images for `%s`\n\n' "$IMAGE_TAG"

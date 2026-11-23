@@ -103,6 +103,23 @@ jobs:
         run: |
           cp .env.example .env
           docker compose up --build --detach --wait --wait-timeout 180
+      - name: Scan all four application images with Trivy
+        run: |
+          bash scripts/install-security-tools.sh "$RUNNER_TEMP/security-tools" trivy
+          export PATH="$RUNNER_TEMP/security-tools:$PATH"
+          compose_image() {
+            docker inspect --format '{{.Config.Image}}' "$(docker compose ps -q "$1")"
+          }
+          bash scripts/scan-images.sh docker "$RUNNER_TEMP/ci-image-security" \
+            "frontend=$(compose_image gateway)" \
+            "incident=$(compose_image incident-service)" \
+            "monitor=$(compose_image monitor-service)" \
+            "notification=$(compose_image notification-service)"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: ci-image-security
+          path: ${{ runner.temp }}/ci-image-security/
       - name: Verify the gateway and monitor API
         run: |
           sh scripts/smoke-test.sh
@@ -120,10 +137,16 @@ jobs:
         if: ${{ always() }}
         run: docker compose down --volumes --remove-orphans
 
+  security:
+    name: Security scans
+    permissions:
+      contents: read
+    uses: ./.github/workflows/security.yml
+
   gate:
     name: CI Gate
     if: ${{ always() }}
-    needs: [java, go, frontend, compose, integration]
+    needs: [java, go, frontend, compose, integration, security]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

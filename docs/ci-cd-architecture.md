@@ -8,7 +8,8 @@ The [CI workflow](../.github/workflows/ci.yml) runs on pull requests, pushes to 
 | Go tests | Run the notification worker's Go tests with the version in `go.mod`. Cache dependencies and build outputs using `go.sum`. |
 | Frontend tests and build | Install from the lockfile with Node.js 24, run Vitest, type-check with TypeScript, and build the Vite bundle. Cache npm downloads using `package-lock.json`. |
 | Compose configuration | Validate the base stack, test profile, and both development overrides using `.env.example`. |
-| PostgreSQL and RabbitMQ integration | Build all four application images and start the stack with both development fixtures. Verify gateway routes, monitor CRUD, incident lifecycle, event persistence, broker recovery, duplicate handling, and webhook delivery. |
+| Security scans | Scan dependency manifests with Trivy and reachable Git history with Gitleaks. |
+| PostgreSQL and RabbitMQ integration | Build and scan all four application images. Verify gateway routes, monitor CRUD, incident lifecycle, event persistence, broker recovery, duplicate handling, and webhook delivery. |
 | CI Gate | Report success only when every upstream job succeeds, including the integration job. |
 
 ## Required check on `main`
@@ -29,5 +30,7 @@ After `CI Gate` passes on a push to `main`, the [publishing workflow](../.github
 | Frontend and Nginx | `ghcr.io/khalilprog/opspilot-frontend` |
 
 The publisher tags each image with `sha-<full-commit-sha>`. It verifies all four digests in GHCR and records the `image@sha256:…` references in the job summary and the `image-manifest` artifact. Use those digest references when selecting an exact build.
+
+Before authenticating to GHCR, the workflow builds into a temporary registry on the runner and scans all four exact candidate digests. The registry copy preserves the BuildKit SBOM and provenance attestations attached to each image index. See the [vulnerability policy](vulnerability-policy.md) for thresholds and report locations.
 
 To publish a version, push a `vMAJOR.MINOR.PATCH` Git tag for a commit whose `main` CI run has finished publishing. The [release tagging workflow](../.github/workflows/release.yml) reads the retained manifest from that run and adds the version tag to the same four digests. If the source run is still publishing or its artifact has expired, rerun the relevant workflow as appropriate and then rerun release tagging.

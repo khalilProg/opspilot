@@ -129,7 +129,7 @@ services:
     command: ["mvn", "-B", "test"]
   notification-service-test:
     profiles: [test]
-    image: golang:1.24-alpine
+    image: golang:1.27.4-alpine
     working_dir: /src
     volumes: ["./services/notification-service:/src"]
     command: ["go", "test", "./..."]

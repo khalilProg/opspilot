@@ -57,7 +57,7 @@ jobs:
       - name: Apply the release tag and verify digests
         run: |
           jq -e --arg commit "$SOURCE_COMMIT" --arg ns "$IMAGE_NAMESPACE" '
-            .commit == $commit and .tag == ("sha-" + $commit) and
+            .commit == $commit and .tag == ("sha-" + $commit) and .security_policy == "trivy-v1" and
             ([.images[].component] | sort) == ["frontend", "incident", "monitor", "notification"] and
             all(.images[];
               .image == ($ns + "/opspilot-" + .component) and
