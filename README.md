@@ -52,6 +52,12 @@ npm run dev --prefix frontend
 
 See the [dashboard design system](DESIGN.md).
 
+## Continuous integration
+
+GitHub Actions runs the Java, Go, frontend, and Compose checks on every pull request and push to `main`. The integration job builds all four application images, starts PostgreSQL and RabbitMQ, and exercises the gateway, monitor API, incident lifecycle, and notification delivery. `CI Gate` reports success only when every job passes.
+
+See the [CI workflow and branch protection setup](docs/ci-cd-architecture.md).
+
 ## Release verification
 
 Install Playwright and Chromium once. Run the release suite as your regular user.
